@@ -5,9 +5,10 @@ import {
   refresh,
   readMe,
   isDirectusError,
+  staticToken,
   type AuthenticationData,
 } from "@directus/sdk";
-import { DIRECTUS_URL, USER_EMAIL } from "./env";
+import { DIRECTUS_URL, USER_EMAIL, DIRECTUS_STATIC_TOKEN } from "./env";
 
 const AUTH_KEY = "directus-data";
 
@@ -28,7 +29,14 @@ class LocalStorage {
   }
 }
 
-// Create Directus client with REST and authentication
+// Server-side Directus client with static token (for SSG/loaders)
+// This runs at build time and needs a static token from env
+export const serverDirectus = DIRECTUS_STATIC_TOKEN
+  ? createDirectus(DIRECTUS_URL).with(staticToken(DIRECTUS_STATIC_TOKEN)).with(rest())
+  : createDirectus(DIRECTUS_URL).with(rest());
+
+// Client-side Directus client with user authentication (browser only)
+// This runs in the browser and uses localStorage for JWT tokens
 const directus = createDirectus(DIRECTUS_URL)
   .with(authentication("json", { storage: new LocalStorage() }))
   .with(rest());

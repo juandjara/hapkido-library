@@ -3,21 +3,19 @@ import { Upload, X, Film, ArrowLeft, Loader2 } from "lucide-react";
 import { useNavigate, useLoaderData } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
 import { readItems, createItem, uploadFiles } from "@directus/sdk";
-import { getDirectusClient, checkServerStatus } from "@/lib/directus";
+import { serverDirectus, getDirectusClient, checkServerStatus } from "@/lib/directus";
 
-// Loader to fetch tags and movements for autocomplete
+// Loader to fetch tags and movements for autocomplete (uses server client for SSG)
 export async function loader() {
-  const directus = getDirectusClient();
-
   try {
     const [tags, movements] = await Promise.all([
-      directus.request(
+      serverDirectus.request(
         readItems("hapkido_tags", {
           fields: ["id", "name"],
           sort: ["sort_order"],
         }),
       ),
-      directus.request(
+      serverDirectus.request(
         readItems("hapkido_movements", {
           fields: ["id", "name"],
           sort: ["sort_order"],

@@ -11,7 +11,7 @@ import {
 import { Link, useLoaderData, useNavigate } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
 import { readItems } from "@directus/sdk";
-import directus, { logout } from "@/lib/directus";
+import { serverDirectus, logout } from "@/lib/directus";
 import { DIRECTUS_URL } from "@/lib/env";
 
 export function meta({}: Route.MetaArgs) {
@@ -21,11 +21,11 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-// Loader runs at build time for SSG
+// Loader runs at build time for SSG (uses server-side static token)
 export async function loader() {
   try {
-    // Fetch videos with relations
-    const videos = await directus.request(
+    // Fetch videos with relations (using server client with static token)
+    const videos = await serverDirectus.request(
       readItems("hapkido_videos", {
         fields: [
           "id",
@@ -41,7 +41,7 @@ export async function loader() {
     );
 
     // Fetch all tags for filters
-    const tags = await directus.request(
+    const tags = await serverDirectus.request(
       readItems("hapkido_tags", {
         fields: ["id", "name"],
         sort: ["sort_order"],
