@@ -1,8 +1,8 @@
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Upload, X, Film, ArrowLeft, Loader2 } from "lucide-react";
-import { useNavigate, useLoaderData } from "react-router";
+import { useNavigate, useLoaderData, useLocation } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
-import { readItems, createItem, uploadFiles } from "@directus/sdk";
+import { readItems, createItem, updateItem, uploadFiles, readItem } from "@directus/sdk";
 import { serverDirectus, getDirectusClient, checkServerStatus } from "@/lib/directus";
 
 // Loader to fetch tags and movements for autocomplete (uses server client for SSG)
@@ -35,10 +35,16 @@ export default function HapkidoUploadForm() {
   useRequireAuth();
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { tags: existingTags, movements: existingMovements } =
     useLoaderData<typeof loader>();
 
+  // Check if we're editing (videoId in location state)
+  const videoId = location.state?.videoId;
+  const isEditMode = !!videoId;
+
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [existingVideoFileId, setExistingVideoFileId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     participants: "",
@@ -49,12 +55,60 @@ export default function HapkidoUploadForm() {
   const [tagInput, setTagInput] = useState("");
   const [movementInput, setMovementInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
 
   // Check server status on mount
   useEffect(() => {
     checkServerStatus().then(setServerOnline);
   }, []);
+
+  // Fetch video data when editing
+  useEffect(() => {
+    if (!videoId) return;
+
+    async function fetchVideoData() {
+      setIsLoadingVideo(true);
+      try {
+        const directus = getDirectusClient();
+        const video = await directus.request(
+          readItem("hapkido_videos", videoId, {
+            fields: [
+              "id",
+              "title",
+              "participants",
+              "uploaded_by",
+              "video_file",
+              "tags.hapkido_tags_id.name",
+              "movements.hapkido_movements_id.name",
+            ],
+          })
+        );
+
+        // Pre-populate form
+        setFormData({
+          title: video.title || "",
+          participants: video.participants || "",
+          uploadedBy: video.uploaded_by || "",
+          tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
+          movements: video.movements?.map((m) => m.hapkido_movements_id?.name).filter(Boolean) || [],
+        });
+
+        // Store existing video file ID
+        if (video.video_file) {
+          setExistingVideoFileId(video.video_file);
+        }
+      } catch (error) {
+        console.error("Error fetching video:", error);
+        alert("Error al cargar el video");
+        navigate("/");
+      } finally {
+        setIsLoadingVideo(false);
+      }
+    }
+
+    fetchVideoData();
+  }, [videoId, navigate]);
 
   const availableTags = existingTags.map((t) => t.name);
   const availableMovements = existingMovements.map((m) => m.name);
@@ -107,8 +161,9 @@ export default function HapkidoUploadForm() {
       return;
     }
 
+    // Validation: video file required for new uploads, optional for edits
     if (
-      !videoFile ||
+      (!isEditMode && !videoFile) ||
       !formData.title ||
       !formData.participants ||
       !formData.uploadedBy
@@ -121,12 +176,14 @@ export default function HapkidoUploadForm() {
     try {
       const directus = getDirectusClient();
 
-      // Step 1: Upload video file
-      const formDataFile = new FormData();
-      formDataFile.append("file", videoFile);
-
-      const uploadedFile = await directus.request(uploadFiles(formDataFile));
-      const videoFileId = uploadedFile.id;
+      // Step 1: Upload new video file if provided
+      let videoFileId = existingVideoFileId;
+      if (videoFile) {
+        const formDataFile = new FormData();
+        formDataFile.append("file", videoFile);
+        const uploadedFile = await directus.request(uploadFiles(formDataFile));
+        videoFileId = uploadedFile.id;
+      }
 
       // Step 2: Get or create tags
       const tagIds = await Promise.all(
@@ -166,13 +223,12 @@ export default function HapkidoUploadForm() {
         }),
       );
 
-      // Step 4: Create video item with relations
+      // Step 4: Create or update video item with relations
       const videoData = {
         title: formData.title,
         participants: formData.participants,
         uploaded_by: formData.uploadedBy,
         video_file: videoFileId,
-        status: "draft", // Default to draft
         tags: tagIds.map((id) => ({
           hapkido_tags_id: id,
         })),
@@ -181,20 +237,28 @@ export default function HapkidoUploadForm() {
         })),
       };
 
-      await directus.request(createItem("hapkido_videos", videoData));
+      if (isEditMode) {
+        await directus.request(updateItem("hapkido_videos", videoId, videoData));
+        alert("¡Video actualizado exitosamente!");
+      } else {
+        await directus.request(createItem("hapkido_videos", {
+          ...videoData,
+          status: "draft", // Default to draft for new videos
+        }));
+        alert("¡Video subido exitosamente!");
+      }
 
-      alert("¡Video subido exitosamente!");
       navigate("/");
     } catch (error) {
-      console.error("Upload error:", error);
-      alert("Error al subir el video. Por favor intenta de nuevo.");
+      console.error(isEditMode ? "Update error:" : "Upload error:", error);
+      alert(isEditMode ? "Error al actualizar el video. Por favor intenta de nuevo." : "Error al subir el video. Por favor intenta de nuevo.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const canSubmit =
-    videoFile &&
+    (isEditMode || videoFile) &&
     formData.title &&
     formData.participants &&
     formData.uploadedBy &&
@@ -213,10 +277,12 @@ export default function HapkidoUploadForm() {
             <p>Volver</p>
           </button>
           <h1 className="text-3xl font-bold text-red-500 mb-2">
-            Subir Nuevo Video
+            {isEditMode ? "Editar Video" : "Subir Nuevo Video"}
           </h1>
           <p className="text-slate-400">
-            Agregar un nuevo video de técnicas a la biblioteca
+            {isEditMode
+              ? "Actualizar la información del video"
+              : "Agregar un nuevo video de técnicas a la biblioteca"}
           </p>
         </div>
 
@@ -228,8 +294,18 @@ export default function HapkidoUploadForm() {
           {/* Video Upload */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
-              Archivo de Video <span className="text-red-500">*</span>
+              Archivo de Video{" "}
+              {isEditMode ? (
+                <span className="text-slate-500 text-xs">(opcional)</span>
+              ) : (
+                <span className="text-red-500">*</span>
+              )}
             </label>
+            {isEditMode && existingVideoFileId && !videoFile && (
+              <p className="text-xs text-slate-400 mb-2">
+                Video actual: {existingVideoFileId} • Sube un nuevo archivo para reemplazarlo
+              </p>
+            )}
             {!videoFile ? (
               <label className="border-2 border-dashed border-slate-600 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-red-500 transition">
                 <Upload className="text-slate-400 mb-2" size={32} />
@@ -469,16 +545,21 @@ export default function HapkidoUploadForm() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={!canSubmit || !serverOnline}
+            disabled={!canSubmit || !serverOnline || isLoadingVideo}
             className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
           >
-            {isSubmitting ? (
+            {isLoadingVideo ? (
               <>
                 <Loader2 className="animate-spin" size={20} />
-                Subiendo...
+                Cargando...
+              </>
+            ) : isSubmitting ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                {isEditMode ? "Actualizando..." : "Subiendo..."}
               </>
             ) : (
-              "Subir Video"
+              isEditMode ? "Actualizar Video" : "Subir Video"
             )}
           </button>
 

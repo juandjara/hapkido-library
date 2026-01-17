@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   LogOut,
+  Edit2,
 } from "lucide-react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
@@ -269,9 +270,20 @@ const HapkidoLibrary = () => {
 
                 {/* Info */}
                 <div className="p-4">
-                  <h3 className="text-white font-semibold mb-2">
-                    {video.title}
-                  </h3>
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="text-white font-semibold flex-1">
+                      {video.title}
+                    </h3>
+                    <button
+                      onClick={() =>
+                        navigate("/upload", { state: { videoId: video.id } })
+                      }
+                      className="ml-2 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
+                      title="Editar video"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-1 text-xs text-slate-400 mb-1">
                     <User size={14} />
