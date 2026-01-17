@@ -16,13 +16,7 @@ import { useRequireAuth } from "@/lib/useAuth";
 import { readItems, deleteItem } from "@directus/sdk";
 import { serverDirectus, logout, getDirectusClient } from "@/lib/directus";
 import { DIRECTUS_URL } from "@/lib/env";
-
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "Biblioteca de Hapkido" },
-    { name: "description", content: "Biblioteca de técnicas de Hapkido" },
-  ];
-}
+import useRootData from "@/lib/useRootData";
 
 // Loader runs at build time for SSG (uses server-side static token)
 export async function loader() {
@@ -66,18 +60,11 @@ export async function loader() {
   }
 }
 
-// Format duration from seconds to MM:SS
-function formatDuration(seconds: number): string {
-  if (!seconds) return "0:00";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
 const HapkidoLibrary = () => {
   // Check authentication (client-side)
   useRequireAuth();
 
+  const { globals } = useRootData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const {
@@ -205,13 +192,11 @@ const HapkidoLibrary = () => {
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-red-500">
-                Biblioteca Kukkiwon Doyang
+                {globals.app_title}
               </h1>
-              <p className="text-slate-400 mt-1">
-                합기도 • Biblioteca de Técnicas Secretas
-              </p>
+              <p className="text-slate-400 mt-1">{globals.app_subtitle}</p>
             </div>
-            <div className="flex self-end ml-auto items-center gap-4">
+            <div className="flex self-end md:self-center ml-auto items-center gap-4">
               <span className="text-slate-300 text-sm">
                 {filteredVideos.length} videos
               </span>

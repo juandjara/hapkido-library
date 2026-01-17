@@ -7,6 +7,8 @@ import {
   isDirectusError,
   staticToken,
   type AuthenticationData,
+  readItems,
+  readSingleton,
 } from "@directus/sdk";
 import { DIRECTUS_URL, USER_EMAIL, DIRECTUS_STATIC_TOKEN } from "./env";
 

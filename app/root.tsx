@@ -5,10 +5,12 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { getGlobals } from "./lib/globals";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,7 +25,20 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+export async function loader() {
+  const globals = await getGlobals();
+  return { globals };
+}
+
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [
+    { title: loaderData?.globals.app_title },
+    { name: "description", content: loaderData?.globals.app_subtitle },
+  ];
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { globals } = useLoaderData<typeof loader>();
   return (
     <html lang="en">
       <head>

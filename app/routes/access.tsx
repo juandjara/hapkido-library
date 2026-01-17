@@ -6,8 +6,7 @@ import {
   type ClientActionFunctionArgs,
 } from "react-router";
 import { authenticateUser } from "@/lib/directus";
-import logoURL from "@/assets/kukkiwon_logo.jpg";
-import bgURL from "@/assets/kukkiwon_bg.jpg";
+import useRootData from "@/lib/useRootData";
 
 export async function clientAction({ request }: ClientActionFunctionArgs) {
   const formData = await request.formData();
@@ -32,19 +31,27 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
 export default function Access() {
   const [password, setPassword] = useState("");
   const actionData = useActionData();
+  const { globals } = useRootData();
 
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div
-        style={{ backgroundImage: `url('${bgURL}')` }}
+        style={{
+          backgroundImage: globals.login_background
+            ? `url('${globals.login_background}')`
+            : "",
+        }}
         className="absolute inset-0 z-10 bg-cover bg-no-repeat"
       ></div>
       <div className="absolute inset-0 z-20 bg-gray-50/80"></div>
       <div className="max-w-lg w-full space-y-8 relative z-30">
         <div className="text-center">
-          <img src={logoURL} className="w-24 mb-6 block mx-auto rounded-full" />
+          <img
+            src={globals.logo ?? ""}
+            className="w-24 mb-6 block mx-auto rounded-full"
+          />
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Biblioteca Kukkiwon Doyang
+            {globals.app_title}
           </h1>
           <p className="text-gray-600">Ingresa la contraseña para continuar</p>
         </div>
@@ -80,11 +87,6 @@ export default function Access() {
             Entrar
           </button>
         </Form>
-
-        {/* <div className="text-center text-sm text-gray-500">
-          <p>¿No tienes acceso?</p>
-          <p>Contacta a tu instructor</p>
-        </div> */}
       </div>
     </div>
   );
