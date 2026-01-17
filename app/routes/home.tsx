@@ -355,7 +355,16 @@ const HapkidoLibrary = () => {
 
                   <div className="flex items-center gap-1 text-xs text-slate-400 mb-1">
                     <User size={14} />
-                    {video.participants}
+                    <div>
+                      {String(video.participants)
+                        .split(",")
+                        .map((s, i) => (
+                          <button key={s} onClick={() => setSearchTerm(s)}>
+                            {i > 0 ? ", " : ""}
+                            {s}
+                          </button>
+                        ))}
+                    </div>
                   </div>
 
                   {video.uploadedBy && (
@@ -367,12 +376,18 @@ const HapkidoLibrary = () => {
                   {/* Tags */}
                   <div className="flex flex-wrap gap-1 mb-3">
                     {video.tags.map((tag, idx) => (
-                      <span
+                      <button
                         key={`${video.id}-tag-${idx}`}
-                        className="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-300"
+                        className={[
+                          "px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-300",
+                          selectedTags.includes(tag)
+                            ? "ring-2 ring-red-400"
+                            : "hover:bg-slate-600",
+                        ].join(" ")}
+                        onClick={() => toggleTag(tag)}
                       >
                         {tag}
-                      </span>
+                      </button>
                     ))}
                   </div>
 
