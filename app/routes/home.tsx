@@ -1,5 +1,5 @@
 import type { Route } from "./+types/home";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   Play,
@@ -9,6 +9,7 @@ import {
   LogOut,
   Edit2,
   Trash2,
+  X,
 } from "lucide-react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
@@ -90,11 +91,41 @@ const HapkidoLibrary = () => {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
     {},
   );
+  const [playingVideo, setPlayingVideo] = useState<{
+    id: string;
+    title: string;
+    videoFile: string;
+  } | null>(null);
 
   const handleLogout = async () => {
     await logout();
     navigate("/access");
   };
+
+  const handlePlayVideo = (video: {
+    id: string;
+    title: string;
+    videoFile: string;
+  }) => {
+    if (video.videoFile) {
+      setPlayingVideo(video);
+    }
+  };
+
+  const handleCloseVideo = () => {
+    setPlayingVideo(null);
+  };
+
+  // Handle ESC key to close fullscreen video
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && playingVideo) {
+        handleCloseVideo();
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [playingVideo]);
 
   const handleDelete = async (videoId: string, videoTitle: string) => {
     if (!confirm(`¿Estás seguro de que quieres eliminar "${videoTitle}"?`)) {
@@ -263,7 +294,16 @@ const HapkidoLibrary = () => {
                 className="bg-slate-800 rounded-lg overflow-hidden border border-slate-700 hover:border-red-500 transition"
               >
                 {/* Thumbnail/Video Preview */}
-                <div className="relative bg-gradient-to-br from-slate-700 to-slate-800 aspect-video flex items-center justify-center cursor-pointer group">
+                <div
+                  className="relative bg-gradient-to-br from-slate-700 to-slate-800 aspect-video flex items-center justify-center cursor-pointer group"
+                  onClick={() =>
+                    handlePlayVideo({
+                      id: video.id,
+                      title: video.title,
+                      videoFile: video.videoFile,
+                    })
+                  }
+                >
                   {video.videoFile ? (
                     <video
                       src={`${directusUrl}/assets/${video.videoFile}`}
@@ -398,6 +438,34 @@ const HapkidoLibrary = () => {
             >
               Limpiar filtros
             </button>
+          </div>
+        )}
+
+        {/* Fullscreen Video Player */}
+        {playingVideo && (
+          <div
+            className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+            onClick={handleCloseVideo}
+          >
+            <button
+              onClick={handleCloseVideo}
+              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition z-10"
+              title="Cerrar (ESC)"
+            >
+              <X size={24} />
+            </button>
+            <div className="w-full h-full flex flex-col items-center justify-center p-4">
+              <h2 className="text-white text-2xl font-bold mb-4 text-center">
+                {playingVideo.title}
+              </h2>
+              <video
+                src={`${directusUrl}/assets/${playingVideo.videoFile}`}
+                className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
+                controls
+                autoPlay
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
           </div>
         )}
       </div>
