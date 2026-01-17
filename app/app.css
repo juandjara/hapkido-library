@@ -18,3 +18,7 @@ body {
 button {
   cursor: pointer;
 }
+
+.access-image-bg {
+  background: var(--image-url);
+}

@@ -6,6 +6,8 @@ import {
   type ClientActionFunctionArgs,
 } from "react-router";
 import { authenticateUser } from "@/lib/directus";
+import logoURL from "@/assets/kukkiwon_logo.jpg";
+import bgURL from "@/assets/kukkiwon_bg.jpg";
 
 export async function clientAction({ request }: ClientActionFunctionArgs) {
   const formData = await request.formData();
@@ -32,9 +34,15 @@ export default function Access() {
   const actionData = useActionData();
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full space-y-8">
+    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div
+        style={{ backgroundImage: `url('${bgURL}')` }}
+        className="absolute inset-0 z-10 bg-cover bg-no-repeat"
+      ></div>
+      <div className="absolute inset-0 z-20 bg-gray-50/80"></div>
+      <div className="max-w-lg w-full space-y-8 relative z-30">
         <div className="text-center">
+          <img src={logoURL} className="w-24 mb-6 block mx-auto rounded-full" />
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
             Biblioteca Kukkiwon Doyang
           </h1>
@@ -60,7 +68,7 @@ export default function Access() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="appearance-none relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="appearance-none relative block w-full px-3 py-3 border border-gray-300 bg-white placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Contraseña"
             />
           </div>

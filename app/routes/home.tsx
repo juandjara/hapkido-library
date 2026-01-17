@@ -205,7 +205,7 @@ const HapkidoLibrary = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-red-500">
-                Kukkiwon Dojang
+                Biblioteca Kukkiwon Doyang
               </h1>
               <p className="text-slate-400 mt-1">
                 합기도 • Biblioteca de Técnicas Secretas
