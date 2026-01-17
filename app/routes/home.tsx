@@ -8,11 +8,12 @@ import {
   ChevronUp,
   LogOut,
   Edit2,
+  Trash2,
 } from "lucide-react";
-import { Link, useLoaderData, useNavigate } from "react-router";
+import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router";
 import { useRequireAuth } from "@/lib/useAuth";
-import { readItems } from "@directus/sdk";
-import { serverDirectus, logout } from "@/lib/directus";
+import { readItems, deleteItem } from "@directus/sdk";
+import { serverDirectus, logout, getDirectusClient } from "@/lib/directus";
 import { DIRECTUS_URL } from "@/lib/env";
 
 export function meta({}: Route.MetaArgs) {
@@ -77,6 +78,7 @@ const HapkidoLibrary = () => {
   useRequireAuth();
 
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
   const {
     videos: rawVideos,
     tags: allTags,
@@ -92,6 +94,23 @@ const HapkidoLibrary = () => {
   const handleLogout = async () => {
     await logout();
     navigate("/access");
+  };
+
+  const handleDelete = async (videoId: string, videoTitle: string) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar "${videoTitle}"?`)) {
+      return;
+    }
+
+    try {
+      const directus = getDirectusClient();
+      await directus.request(deleteItem("hapkido_videos", videoId));
+
+      // Revalidate to refresh the data
+      revalidator.revalidate();
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Error al eliminar el video. Por favor intenta de nuevo.");
+    }
   };
 
   // Transform Directus data to component format
@@ -274,15 +293,24 @@ const HapkidoLibrary = () => {
                     <h3 className="text-white font-semibold flex-1">
                       {video.title}
                     </h3>
-                    <button
-                      onClick={() =>
-                        navigate("/upload", { state: { videoId: video.id } })
-                      }
-                      className="ml-2 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
-                      title="Editar video"
-                    >
-                      <Edit2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() =>
+                          navigate("/upload", { state: { videoId: video.id } })
+                        }
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
+                        title="Editar video"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(video.id, video.title)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded transition"
+                        title="Eliminar video"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1 text-xs text-slate-400 mb-1">
