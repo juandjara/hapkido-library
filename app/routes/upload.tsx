@@ -1,54 +1,65 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import { Upload, X, Film, ArrowLeftCircle, ArrowLeft } from "lucide-react";
+import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+import { Upload, X, Film, ArrowLeft, Loader2 } from "lucide-react";
+import { useNavigate, useLoaderData } from "react-router";
+import { useRequireAuth } from "@/lib/useAuth";
+import { readItems, createItem, uploadFiles } from "@directus/sdk";
+import { getDirectusClient, checkServerStatus } from "@/lib/directus";
+
+// Loader to fetch tags and movements for autocomplete
+export async function loader() {
+  const directus = getDirectusClient();
+
+  try {
+    const [tags, movements] = await Promise.all([
+      directus.request(
+        readItems("hapkido_tags", {
+          fields: ["id", "name"],
+          sort: ["sort_order"],
+        }),
+      ),
+      directus.request(
+        readItems("hapkido_movements", {
+          fields: ["id", "name"],
+          sort: ["sort_order"],
+        }),
+      ),
+    ]);
+
+    return { tags, movements };
+  } catch (error) {
+    console.error("Error loading autocomplete data:", error);
+    return { tags: [], movements: [] };
+  }
+}
 
 export default function HapkidoUploadForm() {
+  // Check authentication
+  useRequireAuth();
+
+  const navigate = useNavigate();
+  const { tags: existingTags, movements: existingMovements } =
+    useLoaderData<typeof loader>();
+
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     participants: "",
+    uploadedBy: "",
     tags: [] as string[],
     movements: [] as string[],
   });
   const [tagInput, setTagInput] = useState("");
   const [movementInput, setMovementInput] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverOnline, setServerOnline] = useState(true);
 
-  // Predefined tags
-  const predefinedTags = [
-    // Belt levels
-    "⚪ Blanco",
-    "🟡 Amarillo",
-    "🟢 Verde",
-    "🔵 Azul",
-    "🔴 Rojo",
-    "⚫ Negro",
-    // Technique types
-    "✊ Golpes",
-    "🦵 Patadas",
-    "🔒 Llaves",
-    "🤸 Lanzamientos",
-    "🏃 Escapes",
-    "🥢 Armas",
-    // Video types
-    "🎯 Individual",
-    "📚 Set",
-    "🔗 Secuencia",
-  ];
+  // Check server status on mount
+  useEffect(() => {
+    checkServerStatus().then(setServerOnline);
+  }, []);
 
-  // Common movements for autocomplete
-  const commonMovements = [
-    "Patada Frontal",
-    "Patada Lateral",
-    "Patada Circular",
-    "Escape de Agarre de Muñeca",
-    "Escape de Abrazo de Oso",
-    "Lanzamiento de Cadera",
-    "Lanzamiento de Hombro",
-    "Golpe de Mano Cuchillo",
-    "Golpe de Mano Inversa",
-    "Llave de Codo",
-    "Llave de Muñeca",
-    "Llave de Hombro",
-  ];
+  const availableTags = existingTags.map((t) => t.name);
+  const availableMovements = existingMovements.map((m) => m.name);
 
   const handleVideoSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = (e.target.files ?? [])[0];
@@ -88,15 +99,108 @@ export default function HapkidoUploadForm() {
     });
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    console.log("Submitting:", { ...formData, videoFile });
-    alert(
-      "¡Video subido! (Esto es una demostración - no se realizó ninguna carga real)",
-    );
+
+    if (!serverOnline) {
+      alert(
+        "El servidor está temporalmente fuera de línea. Intenta más tarde.",
+      );
+      return;
+    }
+
+    if (
+      !videoFile ||
+      !formData.title ||
+      !formData.participants ||
+      !formData.uploadedBy
+    ) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const directus = getDirectusClient();
+
+      // Step 1: Upload video file
+      const formDataFile = new FormData();
+      formDataFile.append("file", videoFile);
+
+      const uploadedFile = await directus.request(uploadFiles(formDataFile));
+      const videoFileId = uploadedFile.id;
+
+      // Step 2: Get or create tags
+      const tagIds = await Promise.all(
+        formData.tags.map(async (tagName) => {
+          // Check if tag exists
+          const existing = existingTags.find((t) => t.name === tagName);
+          if (existing) return existing.id;
+
+          // Create new tag
+          const newTag = await directus.request(
+            createItem("hapkido_tags", {
+              name: tagName,
+              sort_order: 999, // New tags go to end
+            }),
+          );
+          return newTag.id;
+        }),
+      );
+
+      // Step 3: Get or create movements
+      const movementIds = await Promise.all(
+        formData.movements.map(async (movementName) => {
+          // Check if movement exists
+          const existing = existingMovements.find(
+            (m) => m.name === movementName,
+          );
+          if (existing) return existing.id;
+
+          // Create new movement
+          const newMovement = await directus.request(
+            createItem("hapkido_movements", {
+              name: movementName,
+              sort_order: 999,
+            }),
+          );
+          return newMovement.id;
+        }),
+      );
+
+      // Step 4: Create video item with relations
+      const videoData = {
+        title: formData.title,
+        participants: formData.participants,
+        uploaded_by: formData.uploadedBy,
+        video_file: videoFileId,
+        status: "draft", // Default to draft
+        tags: tagIds.map((id) => ({
+          hapkido_tags_id: id,
+        })),
+        movements: movementIds.map((id) => ({
+          hapkido_movements_id: id,
+        })),
+      };
+
+      await directus.request(createItem("hapkido_videos", videoData));
+
+      alert("¡Video subido exitosamente!");
+      navigate("/");
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Error al subir el video. Por favor intenta de nuevo.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const canSubmit = videoFile && formData.title && formData.participants;
+  const canSubmit =
+    videoFile &&
+    formData.title &&
+    formData.participants &&
+    formData.uploadedBy &&
+    !isSubmitting;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
@@ -205,6 +309,26 @@ export default function HapkidoUploadForm() {
             </p>
           </div>
 
+          {/* Uploaded By */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Tu Nombre <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.uploadedBy}
+              onChange={(e) =>
+                setFormData({ ...formData, uploadedBy: e.target.value })
+              }
+              placeholder="ej., Juan Pérez"
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-red-500"
+              required
+            />
+            <p className="text-slate-500 text-xs mt-1">
+              Para mostrar quién subió este video
+            </p>
+          </div>
+
           {/* Tags */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -250,7 +374,7 @@ export default function HapkidoUploadForm() {
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-red-500"
               />
               <datalist id="predefined-tags">
-                {predefinedTags
+                {availableTags
                   .filter((tag) => !formData.tags.includes(tag))
                   .map((tag) => (
                     <option key={tag} value={tag} />
@@ -264,8 +388,9 @@ export default function HapkidoUploadForm() {
                 Etiquetas sugeridas:
               </p>
               <div className="flex flex-wrap gap-2">
-                {predefinedTags
+                {availableTags
                   .filter((tag) => !formData.tags.includes(tag))
+                  .slice(0, 15)
                   .map((tag) => (
                     <button
                       key={tag}
@@ -325,7 +450,7 @@ export default function HapkidoUploadForm() {
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-red-500"
               />
               <datalist id="common-movements">
-                {commonMovements.map((movement) => (
+                {availableMovements.map((movement) => (
                   <option key={movement} value={movement} />
                 ))}
               </datalist>
@@ -335,16 +460,31 @@ export default function HapkidoUploadForm() {
             </p>
           </div>
 
+          {/* Server Status Warning */}
+          {!serverOnline && (
+            <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 text-sm text-red-300">
+              ⚠️ El servidor está temporalmente fuera de línea. No podrás subir
+              videos en este momento.
+            </div>
+          )}
+
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={!canSubmit}
-            className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium transition"
+            disabled={!canSubmit || !serverOnline}
+            className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
           >
-            Subir Video
+            {isSubmitting ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                Subiendo...
+              </>
+            ) : (
+              "Subir Video"
+            )}
           </button>
 
-          {!canSubmit && (
+          {!canSubmit && !isSubmitting && (
             <p className="text-slate-500 text-xs text-center">
               Por favor completa todos los campos requeridos (*)
             </p>

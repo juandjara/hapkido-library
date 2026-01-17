@@ -3,12 +3,16 @@ import { useState } from "react";
 import {
   Search,
   Play,
-  Clock,
   User,
   ChevronDown,
   ChevronUp,
+  LogOut,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
+import { useRequireAuth } from "@/lib/useAuth";
+import { readItems } from "@directus/sdk";
+import directus, { logout } from "@/lib/directus";
+import { DIRECTUS_URL } from "@/lib/env";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -17,112 +21,93 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
+// Loader runs at build time for SSG
+export async function loader() {
+  try {
+    // Fetch videos with relations
+    const videos = await directus.request(
+      readItems("hapkido_videos", {
+        fields: [
+          "id",
+          "title",
+          "participants",
+          "uploaded_by",
+          "video_file",
+          "tags.hapkido_tags_id.name",
+          "movements.hapkido_movements_id.name",
+        ],
+        sort: ["-date_created"],
+      }),
+    );
+
+    // Fetch all tags for filters
+    const tags = await directus.request(
+      readItems("hapkido_tags", {
+        fields: ["id", "name"],
+        sort: ["sort_order"],
+      }),
+    );
+
+    return {
+      videos,
+      tags,
+      directusUrl: DIRECTUS_URL,
+    };
+  } catch (error) {
+    console.error("Error loading data:", error);
+    return {
+      videos: [],
+      tags: [],
+      directusUrl: DIRECTUS_URL,
+    };
+  }
+}
+
+// Format duration from seconds to MM:SS
+function formatDuration(seconds: number): string {
+  if (!seconds) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 const HapkidoLibrary = () => {
+  // Check authentication (client-side)
+  useRequireAuth();
+
+  const navigate = useNavigate();
+  const {
+    videos: rawVideos,
+    tags: allTags,
+    directusUrl,
+  } = useLoaderData<typeof loader>();
+
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [expandedCards, setExpandedCards] = useState<Record<number, boolean>>(
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
     {},
   );
 
-  // Sample video data
-  const videos = [
-    {
-      id: 1,
-      title: "Grupo de Lanzamientos 1",
-      participants: "Master Kim, Instructor Lee",
-      duration: "0:45",
-      thumbnail: "🤸",
-      views: 234,
-      tags: ["🔵 Azul", "🤸 Lanzamientos", "📚 Set"],
-      movements: [
-        "Lanzamiento de Cadera",
-        "Lanzamiento de Hombro",
-        "Lanzamiento de Brazo",
-      ],
-    },
-    {
-      id: 2,
-      title: "Defensa con Bastón Corto",
-      participants: "Instructor Park",
-      duration: "0:38",
-      thumbnail: "🥢",
-      views: 456,
-      tags: ["🔴 Rojo", "🥢 Armas", "🎯 Individual"],
-      movements: ["Defensa Personal con Bastón"],
-    },
-    {
-      id: 3,
-      title: "Primera Secuencia - Llaves Articulares",
-      participants: "Master Kim, Estudiante Ana",
-      duration: "0:52",
-      thumbnail: "🔗",
-      views: 189,
-      tags: ["🟢 Verde", "🔒 Llaves", "🔗 Secuencia"],
-      movements: [
-        "Flujo de Llave de Muñeca",
-        "Transición de Llave de Codo",
-        "Finalización con Llave de Hombro",
-      ],
-    },
-    {
-      id: 4,
-      title: "Variaciones de Patada Frontal",
-      participants: "Instructor Lee, Estudiante Carlos",
-      duration: "0:35",
-      thumbnail: "🦵",
-      views: 312,
-      tags: ["⚪ Blanco", "🟡 Amarillo", "🦵 Patadas", "📚 Set"],
-      movements: ["Patada Frontal Básica", "Patada Frontal con Salto"],
-    },
-    {
-      id: 5,
-      title: "Escape de Abrazo Trasero",
-      participants: "Master Kim, Instructor Park",
-      duration: "0:28",
-      thumbnail: "🤼",
-      views: 278,
-      tags: ["🟢 Verde", "🏃 Escapes", "🎯 Individual"],
-      movements: ["Escape de Abrazo de Oso por Detrás"],
-    },
-    {
-      id: 6,
-      title: "Combo de Golpes Básicos",
-      participants: "Instructor Park",
-      duration: "0:42",
-      thumbnail: "✋",
-      views: 401,
-      tags: ["⚪ Blanco", "🟡 Amarillo", "✊ Golpes", "📚 Set"],
-      movements: [
-        "Golpe de Mano Cuchillo",
-        "Golpe de Mano Inversa",
-        "Golpe con Talón de Palma",
-      ],
-    },
-  ];
+  const handleLogout = async () => {
+    await logout();
+    navigate("/access");
+  };
 
-  // All available tags with categories
-  const allTags = [
-    // Belt levels
-    { value: "⚪ Blanco", category: "belt" },
-    { value: "🟡 Amarillo", category: "belt" },
-    { value: "🟢 Verde", category: "belt" },
-    { value: "🔵 Azul", category: "belt" },
-    { value: "🔴 Rojo", category: "belt" },
-    { value: "⚫ Negro", category: "belt" },
-    // Technique types
-    { value: "✊ Golpes", category: "type" },
-    { value: "🦵 Patadas", category: "type" },
-    { value: "🔒 Llaves", category: "type" },
-    { value: "🤸 Lanzamientos", category: "type" },
-    { value: "🏃 Escapes", category: "type" },
-    { value: "🥢 Armas", category: "type" },
-    // Video types
-    { value: "🎯 Individual", category: "videoType" },
-    { value: "📚 Set", category: "videoType" },
-    { value: "🔗 Secuencia", category: "videoType" },
-  ];
+  // Transform Directus data to component format
+  const videos = rawVideos.map((video) => ({
+    id: video.id,
+    title: video.title,
+    participants: video.participants,
+    uploadedBy: video.uploaded_by,
+    videoFile: video.video_file,
+    tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
+    movements:
+      video.movements
+        ?.map((m) => m.hapkido_movements_id?.name)
+        .filter(Boolean) || [],
+  }));
 
-  const toggleExpand = (videoId: number) => {
+  const toggleExpand = (videoId: string) => {
     setExpandedCards((prev) => ({
       ...prev,
       [videoId]: !prev[videoId],
@@ -153,6 +138,14 @@ const HapkidoLibrary = () => {
     );
   };
 
+  // Get emoji from tag name (first character if it's an emoji)
+  const getThumbnail = (tags: string[]) => {
+    if (tags.length === 0) return "🥋";
+    const firstTag = tags[0];
+    const emoji = firstTag.charAt(0);
+    return emoji;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
@@ -177,6 +170,13 @@ const HapkidoLibrary = () => {
               >
                 Subir Video
               </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition"
+                title="Cerrar sesión"
+              >
+                <LogOut size={18} />
+              </button>
             </div>
           </div>
         </div>
@@ -205,15 +205,15 @@ const HapkidoLibrary = () => {
           <div className="flex flex-wrap gap-x-3 gap-y-4">
             {allTags.map((tag) => (
               <button
-                key={tag.value}
-                onClick={() => toggleTag(tag.value)}
+                key={tag.id}
+                onClick={() => toggleTag(tag.name)}
                 className={`px-3 py-2 rounded-full text-sm font-medium transition ${
-                  selectedTags.includes(tag.value)
+                  selectedTags.includes(tag.name)
                     ? "bg-red-600 text-white ring-2 ring-red-400"
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                 }`}
               >
-                {tag.value}
+                {tag.name}
               </button>
             ))}
           </div>
@@ -242,20 +242,28 @@ const HapkidoLibrary = () => {
                 key={video.id}
                 className="bg-slate-800 rounded-lg overflow-hidden border border-slate-700 hover:border-red-500 transition"
               >
-                {/* Thumbnail */}
+                {/* Thumbnail/Video Preview */}
                 <div className="relative bg-gradient-to-br from-slate-700 to-slate-800 aspect-video flex items-center justify-center cursor-pointer group">
-                  <span className="text-6xl opacity-50 group-hover:scale-110 transition">
-                    {video.thumbnail}
-                  </span>
+                  {video.videoFile ? (
+                    <video
+                      src={`${directusUrl}/assets/${video.videoFile}`}
+                      className="w-full h-full object-cover"
+                      preload="metadata"
+                      onError={(e) => {
+                        // Fallback to emoji on error
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-6xl opacity-50 group-hover:scale-110 transition">
+                      {getThumbnail(video.tags)}
+                    </span>
+                  )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
                     <Play
                       className="text-white opacity-0 group-hover:opacity-100 transition"
                       size={48}
                     />
-                  </div>
-                  <div className="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded text-xs text-white flex items-center gap-1">
-                    <Clock size={12} />
-                    {video.duration}
                   </div>
                 </div>
 
@@ -265,16 +273,22 @@ const HapkidoLibrary = () => {
                     {video.title}
                   </h3>
 
-                  <div className="flex items-center gap-1 text-xs text-slate-400 mb-3">
+                  <div className="flex items-center gap-1 text-xs text-slate-400 mb-1">
                     <User size={14} />
                     {video.participants}
                   </div>
 
+                  {video.uploadedBy && (
+                    <div className="text-xs text-slate-500 mb-3">
+                      Subido por: {video.uploadedBy}
+                    </div>
+                  )}
+
                   {/* Tags */}
                   <div className="flex flex-wrap gap-1 mb-3">
-                    {video.tags.map((tag) => (
+                    {video.tags.map((tag, idx) => (
                       <span
-                        key={tag}
+                        key={`${video.id}-tag-${idx}`}
                         className="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-300"
                       >
                         {tag}
@@ -302,10 +316,7 @@ const HapkidoLibrary = () => {
                       {isExpanded && (
                         <ul className="mt-2 space-y-1">
                           {video.movements.map((movement, idx) => (
-                            <li
-                              key={idx}
-                              className="text-xs text-slate-400 pl-4"
-                            >
+                            <li key={idx} className="text-xs text-slate-400">
                               • {movement}
                             </li>
                           ))}
@@ -320,8 +331,21 @@ const HapkidoLibrary = () => {
         </div>
 
         {/* No Results */}
-        {filteredVideos.length === 0 && (
-          <div className="text-center py-16">
+        {filteredVideos.length === 0 && videos.length === 0 && (
+          <div className="text-center py-6">
+            <p className="text-slate-400 text-lg">
+              No hay ningun video disponible
+            </p>
+            <Link
+              to="/upload"
+              className="block mt-4 text-red-400 hover:text-red-300 transition"
+            >
+              Subir video
+            </Link>
+          </div>
+        )}
+        {filteredVideos.length === 0 && videos.length > 0 && (
+          <div className="text-center py-6">
             <p className="text-slate-400 text-lg">
               No hay videos que coincidan con tus filtros
             </p>

@@ -6,4 +6,8 @@ export default [
     path: "/upload",
     file: "routes/upload.tsx",
   },
+  {
+    path: "/access",
+    file: "routes/access.tsx",
+  },
 ] satisfies RouteConfig;
