@@ -32,7 +32,9 @@ class LocalStorage {
 // Server-side Directus client with static token (for SSG/loaders)
 // This runs at build time and needs a static token from env
 export const serverDirectus = DIRECTUS_STATIC_TOKEN
-  ? createDirectus(DIRECTUS_URL).with(staticToken(DIRECTUS_STATIC_TOKEN)).with(rest())
+  ? createDirectus(DIRECTUS_URL)
+      .with(staticToken(DIRECTUS_STATIC_TOKEN))
+      .with(rest())
   : createDirectus(DIRECTUS_URL).with(rest());
 
 // Client-side Directus client with user authentication (browser only)
@@ -121,7 +123,7 @@ export async function refreshAuth() {
  */
 export async function logout() {
   try {
-    await directus.logout({ mode: "json" });
+    await directus.logout();
   } catch (error) {
     // Ignore logout errors, just clear local storage
     console.error("Logout error:", error);
