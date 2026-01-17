@@ -202,7 +202,7 @@ const HapkidoLibrary = () => {
       {/* Header */}
       <header className="bg-slate-900 border-b border-red-900/30 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-red-500">
                 Biblioteca Kukkiwon Doyang
@@ -211,7 +211,7 @@ const HapkidoLibrary = () => {
                 합기도 • Biblioteca de Técnicas Secretas
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex self-end ml-auto items-center gap-4">
               <span className="text-slate-300 text-sm">
                 {filteredVideos.length} videos
               </span>
