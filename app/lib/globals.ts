@@ -9,7 +9,7 @@ export type Globals = {
   logo: string | null;
 };
 
-const DEFAULT_TITLE = "Biblioteca Kukkiwon Doyang";
+const DEFAULT_TITLE = "Biblioteca Hapkido";
 const DEFAULT_SUBTITLE = "합기도 • Biblioteca de Técnicas Secretas";
 
 export async function getGlobals() {
@@ -31,8 +31,8 @@ export async function getGlobals() {
   } catch (err) {
     console.error("Error reading globals:", err);
     return {
-      app_title: "Biblioteca Kukkiwon Doyang",
-      app_subtitle: "합기도 • Biblioteca de Técnicas Secretas",
+      app_title: DEFAULT_TITLE,
+      app_subtitle: DEFAULT_SUBTITLE,
       login_background: null,
       logo: null,
     };
