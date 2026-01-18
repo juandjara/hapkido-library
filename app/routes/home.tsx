@@ -1,4 +1,3 @@
-import type { Route } from "./+types/home";
 import { useState, useEffect } from "react";
 import {
   Search,
@@ -11,12 +10,24 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { useRequireAuth } from "@/lib/useAuth";
+import {
+  Link,
+  redirect,
+  useLoaderData,
+  useNavigate,
+  useRevalidator,
+  type ClientLoaderFunctionArgs,
+} from "react-router";
 import { readItems, deleteItem } from "@directus/sdk";
-import { serverDirectus, logout, getDirectusClient } from "@/lib/directus";
+import {
+  serverDirectus,
+  logout,
+  getDirectusClient,
+  isAuthenticated,
+} from "@/lib/directus";
 import { DIRECTUS_URL } from "@/lib/env";
 import useRootData from "@/lib/useRootData";
+import Loading from "@/components/Loading";
 
 // Loader runs at build time for SSG (uses server-side static token)
 export async function loader() {
@@ -60,10 +71,22 @@ export async function loader() {
   }
 }
 
-const HapkidoLibrary = () => {
-  // Check authentication (client-side)
-  useRequireAuth();
+export async function clientLoader({ serverLoader }: ClientLoaderFunctionArgs) {
+  const authenticated = await isAuthenticated();
+  if (!authenticated) {
+    return redirect("/access");
+  }
+  const serverData = await serverLoader<typeof loader>();
+  return serverData;
+}
 
+clientLoader.hydrate = true;
+
+export function HydrateFallback() {
+  return <Loading />;
+}
+
+const HapkidoLibrary = () => {
   const { globals } = useRootData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();

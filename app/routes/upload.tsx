@@ -1,9 +1,26 @@
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Upload, X, Film, ArrowLeft, Loader2 } from "lucide-react";
-import { useNavigate, useLoaderData, useLocation } from "react-router";
-import { useRequireAuth } from "@/lib/useAuth";
-import { readItems, createItem, updateItem, uploadFiles, readItem } from "@directus/sdk";
-import { serverDirectus, getDirectusClient, checkServerStatus } from "@/lib/directus";
+import {
+  useNavigate,
+  useLoaderData,
+  useLocation,
+  type ClientLoaderFunctionArgs,
+  redirect,
+} from "react-router";
+import {
+  readItems,
+  createItem,
+  updateItem,
+  uploadFiles,
+  readItem,
+} from "@directus/sdk";
+import {
+  serverDirectus,
+  getDirectusClient,
+  checkServerStatus,
+  isAuthenticated,
+} from "@/lib/directus";
+import Loading from "@/components/Loading";
 
 // Loader to fetch tags and movements for autocomplete (uses server client for SSG)
 export async function loader() {
@@ -30,10 +47,22 @@ export async function loader() {
   }
 }
 
-export default function HapkidoUploadForm() {
-  // Check authentication
-  useRequireAuth();
+export async function clientLoader({ serverLoader }: ClientLoaderFunctionArgs) {
+  const authenticated = await isAuthenticated();
+  if (!authenticated) {
+    return redirect("/access");
+  }
+  const serverData = await serverLoader<typeof loader>();
+  return serverData;
+}
 
+clientLoader.hydrate = true;
+
+export function HydrateFallback() {
+  return <Loading />;
+}
+
+export default function HapkidoUploadForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { tags: existingTags, movements: existingMovements } =
@@ -44,7 +73,9 @@ export default function HapkidoUploadForm() {
   const isEditMode = !!videoId;
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [existingVideoFileId, setExistingVideoFileId] = useState<string | null>(null);
+  const [existingVideoFileId, setExistingVideoFileId] = useState<string | null>(
+    null,
+  );
   const [formData, setFormData] = useState({
     title: "",
     participants: "",
@@ -82,7 +113,7 @@ export default function HapkidoUploadForm() {
               "tags.hapkido_tags_id.name",
               "movements.hapkido_movements_id.name",
             ],
-          })
+          }),
         );
 
         // Pre-populate form
@@ -90,8 +121,13 @@ export default function HapkidoUploadForm() {
           title: video.title || "",
           participants: video.participants || "",
           uploadedBy: video.uploaded_by || "",
-          tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
-          movements: video.movements?.map((m) => m.hapkido_movements_id?.name).filter(Boolean) || [],
+          tags:
+            video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) ||
+            [],
+          movements:
+            video.movements
+              ?.map((m) => m.hapkido_movements_id?.name)
+              .filter(Boolean) || [],
         });
 
         // Store existing video file ID
@@ -238,20 +274,28 @@ export default function HapkidoUploadForm() {
       };
 
       if (isEditMode) {
-        await directus.request(updateItem("hapkido_videos", videoId, videoData));
+        await directus.request(
+          updateItem("hapkido_videos", videoId, videoData),
+        );
         alert("¡Video actualizado exitosamente!");
       } else {
-        await directus.request(createItem("hapkido_videos", {
-          ...videoData,
-          status: "draft", // Default to draft for new videos
-        }));
+        await directus.request(
+          createItem("hapkido_videos", {
+            ...videoData,
+            status: "draft", // Default to draft for new videos
+          }),
+        );
         alert("¡Video subido exitosamente!");
       }
 
       navigate("/");
     } catch (error) {
       console.error(isEditMode ? "Update error:" : "Upload error:", error);
-      alert(isEditMode ? "Error al actualizar el video. Por favor intenta de nuevo." : "Error al subir el video. Por favor intenta de nuevo.");
+      alert(
+        isEditMode
+          ? "Error al actualizar el video. Por favor intenta de nuevo."
+          : "Error al subir el video. Por favor intenta de nuevo.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -303,7 +347,8 @@ export default function HapkidoUploadForm() {
             </label>
             {isEditMode && existingVideoFileId && !videoFile && (
               <p className="text-xs text-slate-400 mb-2">
-                Video actual: {existingVideoFileId} • Sube un nuevo archivo para reemplazarlo
+                Video actual: {existingVideoFileId} • Sube un nuevo archivo para
+                reemplazarlo
               </p>
             )}
             {!videoFile ? (
@@ -558,8 +603,10 @@ export default function HapkidoUploadForm() {
                 <Loader2 className="animate-spin" size={20} />
                 {isEditMode ? "Actualizando..." : "Subiendo..."}
               </>
+            ) : isEditMode ? (
+              "Actualizar Video"
             ) : (
-              isEditMode ? "Actualizar Video" : "Subir Video"
+              "Subir Video"
             )}
           </button>
 
