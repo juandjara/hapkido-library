@@ -208,10 +208,10 @@ const HapkidoLibrary = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
       <header className="bg-slate-900 border-b border-red-900/30 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="max-w-7xl mx-auto px-2 py-6">
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-red-500">
@@ -241,9 +241,9 @@ const HapkidoLibrary = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-2 py-6">
         {/* Search Bar */}
-        <div className="mb-8">
+        <div className="mb-3">
           <div className="relative">
             <Search
               className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400"
@@ -260,13 +260,13 @@ const HapkidoLibrary = () => {
         </div>
 
         {/* Filters */}
-        <div className="mb-12">
-          <div className="flex flex-wrap gap-x-3 gap-y-4">
+        <div className="mb-8">
+          <div className="flex flex-wrap gap-2">
             {allTags.map((tag) => (
               <button
                 key={tag.id}
                 onClick={() => toggleTag(tag.name)}
-                className={`px-3 py-2 rounded-full text-sm font-medium transition ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition ${
                   selectedTags.includes(tag.name)
                     ? "bg-red-600 text-white ring-2 ring-red-400"
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
