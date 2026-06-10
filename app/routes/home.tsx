@@ -103,6 +103,9 @@ const HapkidoLibrary = () => {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
     {},
   );
+  const [videoDurations, setVideoDurations] = useState<Record<string, number>>(
+    {},
+  );
   const [playingVideo, setPlayingVideo] = useState<{
     id: string;
     title: string;
@@ -209,6 +212,17 @@ const HapkidoLibrary = () => {
       month: "short",
       year: "numeric",
     });
+  };
+
+  const formatDuration = (seconds: number) => {
+    const totalSeconds = Math.round(seconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+    return `${minutes}:${String(secs).padStart(2, "0")}`;
   };
 
   // Get emoji from tag name (first character if it's an emoji)
@@ -329,6 +343,15 @@ const HapkidoLibrary = () => {
                       src={`${directusUrl}/assets/${video.videoFile}`}
                       className="w-full h-full object-cover"
                       preload="metadata"
+                      onLoadedMetadata={(e) => {
+                        const duration = e.currentTarget.duration;
+                        if (Number.isFinite(duration)) {
+                          setVideoDurations((prev) => ({
+                            ...prev,
+                            [video.id]: duration,
+                          }));
+                        }
+                      }}
                       onError={(e) => {
                         // Fallback to emoji on error
                         e.currentTarget.style.display = "none";
@@ -345,6 +368,11 @@ const HapkidoLibrary = () => {
                       size={48}
                     />
                   </div>
+                  {videoDurations[video.id] !== undefined && (
+                    <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs font-medium rounded">
+                      {formatDuration(videoDurations[video.id])}
+                    </span>
+                  )}
                 </div>
 
                 {/* Info */}
