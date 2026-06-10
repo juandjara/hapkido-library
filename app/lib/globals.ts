@@ -1,4 +1,4 @@
-import { readSingleton } from "@directus/sdk";
+import { isDirectusError, readSingleton } from "@directus/sdk";
 import { serverDirectus } from "./directus";
 import { DIRECTUS_URL } from "./env";
 
@@ -29,7 +29,18 @@ export async function getGlobals() {
       logo: logo ? `${DIRECTUS_URL}/assets/${logo}` : null,
     };
   } catch (err) {
-    console.error("Error reading globals:", err);
+    if (isDirectusError(err)) {
+      const code = err.errors[0]?.extensions?.code;
+      const message = err.errors[0]?.message;
+      console.error(
+        `Error reading globals from Directus (${code}): ${message}.` +
+          (code === "FORBIDDEN"
+            ? " Check that DIRECTUS_STATIC_TOKEN is set and valid in this environment."
+            : ""),
+      );
+    } else {
+      console.error("Error reading globals:", err);
+    }
     return {
       app_title: DEFAULT_TITLE,
       app_subtitle: DEFAULT_SUBTITLE,
