@@ -333,7 +333,7 @@ export default function HapkidoUploadForm() {
         {/* Form */}
         <form
           onSubmit={handleSubmit}
-          className="bg-slate-800 rounded-lg p-8 border border-slate-700 space-y-6"
+          className="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-6"
         >
           {/* Video Upload */}
           <div>
