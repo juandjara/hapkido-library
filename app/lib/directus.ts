@@ -134,6 +134,52 @@ export async function logout() {
 }
 
 /**
+ * Upload a file to Directus reporting upload progress.
+ * Uses XMLHttpRequest because fetch (what the SDK uses) cannot emit upload progress events.
+ * @param {File} file - The file to upload
+ * @param {(percent: number) => void} onProgress - Called with 0-100 as bytes are sent
+ * @returns {Promise<{id: string}>} The created Directus file
+ */
+export async function uploadFileWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<{ id: string }> {
+  const token = await directus.getToken();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${DIRECTUS_URL}/files`);
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText).data);
+        } catch {
+          reject(new Error("Upload succeeded but response was not valid JSON"));
+        }
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.send(formData);
+  });
+}
+
+/**
  * Check if Directus server is online
  * @returns {Promise<boolean>}
  */

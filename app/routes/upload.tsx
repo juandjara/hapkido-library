@@ -11,7 +11,6 @@ import {
   readItems,
   createItem,
   updateItem,
-  uploadFiles,
   readItem,
 } from "@directus/sdk";
 import {
@@ -19,6 +18,7 @@ import {
   getDirectusClient,
   checkServerStatus,
   isAuthenticated,
+  uploadFileWithProgress,
 } from "@/lib/directus";
 import Loading from "@/components/Loading";
 
@@ -86,6 +86,7 @@ export default function HapkidoUploadForm() {
   const [tagInput, setTagInput] = useState("");
   const [movementInput, setMovementInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
 
@@ -215,10 +216,13 @@ export default function HapkidoUploadForm() {
       // Step 1: Upload new video file if provided
       let videoFileId = existingVideoFileId;
       if (videoFile) {
-        const formDataFile = new FormData();
-        formDataFile.append("file", videoFile);
-        const uploadedFile = await directus.request(uploadFiles(formDataFile));
+        setUploadProgress(0);
+        const uploadedFile = await uploadFileWithProgress(
+          videoFile,
+          setUploadProgress,
+        );
         videoFileId = uploadedFile.id;
+        setUploadProgress(null);
       }
 
       // Step 2: Get or create tags
@@ -298,6 +302,7 @@ export default function HapkidoUploadForm() {
       );
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -584,6 +589,21 @@ export default function HapkidoUploadForm() {
             </div>
           )}
 
+          {/* Upload Progress */}
+          {uploadProgress !== null && (
+            <div>
+              <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-600 transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-slate-400 text-xs mt-1 text-center">
+                Subiendo video... {uploadProgress}%
+              </p>
+            </div>
+          )}
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -598,7 +618,11 @@ export default function HapkidoUploadForm() {
             ) : isSubmitting ? (
               <>
                 <Loader2 className="animate-spin" size={20} />
-                {isEditMode ? "Actualizando..." : "Subiendo..."}
+                {uploadProgress !== null
+                  ? `Subiendo... ${uploadProgress}%`
+                  : isEditMode
+                    ? "Actualizando..."
+                    : "Guardando..."}
               </>
             ) : isEditMode ? (
               "Actualizar Video"
