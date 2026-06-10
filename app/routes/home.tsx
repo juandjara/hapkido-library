@@ -3,6 +3,7 @@ import {
   Search,
   Play,
   User,
+  Calendar,
   ChevronDown,
   ChevronUp,
   LogOut,
@@ -41,6 +42,7 @@ export async function loader() {
           "participants",
           "uploaded_by",
           "video_file",
+          "date_created",
           "tags.hapkido_tags_id.name",
           "movements.hapkido_movements_id.name",
         ],
@@ -161,6 +163,7 @@ const HapkidoLibrary = () => {
     participants: video.participants,
     uploadedBy: video.uploaded_by,
     videoFile: video.video_file,
+    dateCreated: video.date_created,
     tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
     movements:
       video.movements
@@ -197,6 +200,15 @@ const HapkidoLibrary = () => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     );
+  };
+
+  const formatDate = (date: string | null | undefined) => {
+    if (!date) return null;
+    return new Date(date).toLocaleDateString("es", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   // Get emoji from tag name (first character if it's an emoji)
@@ -373,6 +385,13 @@ const HapkidoLibrary = () => {
                           </button>
                         ))}
                     </div>
+                    <div className="grow"></div>
+                    {video.dateCreated && (
+                      <span className="ml-2 flex items-center gap-1">
+                        <Calendar size={12} />
+                        {formatDate(video.dateCreated)}
+                      </span>
+                    )}
                   </div>
 
                   {video.uploadedBy && (
