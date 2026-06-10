@@ -357,9 +357,7 @@ export default function HapkidoUploadForm() {
                 <span className="text-slate-400 text-sm">
                   Haz clic para subir video
                 </span>
-                <span className="text-slate-500 text-xs mt-1">
-                  MP4, MOV (máx 100MB)
-                </span>
+                <span className="text-slate-500 text-xs mt-1">MP4, MOV</span>
                 <input
                   type="file"
                   accept="video/*"
