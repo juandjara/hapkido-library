@@ -207,14 +207,28 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
 
   async function probeVideo(inputPath) {
     try {
-      const cmd = `"${FFPROBE}" -v error -select_streams v:0 -show_entries stream=width,height,codec_name -show_entries format=bit_rate -of json "${inputPath}"`;
+      const cmd = `"${FFPROBE}" -v error -select_streams v:0 -show_streams -show_format -of json "${inputPath}"`;
       const { stdout } = await execAsync(cmd);
       const parsed = JSON.parse(stdout);
       const videoStream = parsed.streams?.[0];
       if (!videoStream?.width || !videoStream?.height) return null;
+
+      // Phone videos are often stored with landscape coded frames plus a
+      // display-matrix rotation. ffmpeg auto-rotates the frames during
+      // transcode, so scaling MUST be computed from display dimensions —
+      // using coded dimensions squishes rotated videos. Rotation lives in
+      // side_data_list (ffprobe 5+) or tags.rotate (ffprobe 4).
+      const sideRotation = (videoStream.side_data_list ?? []).find(
+        (sideData) => sideData.rotation !== undefined,
+      )?.rotation;
+      const rotation = Math.abs(
+        Number(sideRotation ?? videoStream.tags?.rotate ?? 0),
+      );
+      const swapped = rotation % 180 === 90;
+
       return {
-        width: videoStream.width,
-        height: videoStream.height,
+        width: swapped ? videoStream.height : videoStream.width,
+        height: swapped ? videoStream.width : videoStream.height,
         codec: videoStream.codec_name,
         bitRate: Number(parsed.format?.bit_rate ?? 0),
       };
