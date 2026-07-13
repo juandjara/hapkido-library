@@ -8,20 +8,10 @@ import {
 } from "@directus/sdk";
 import fs from "fs";
 import path from "path";
-import { promisify } from "util";
-import { exec as execCallback } from "child_process";
 import crypto from "crypto";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 
 // Load environment variables
 dotenv.config();
-
-// Set ffmpeg and ffprobe paths
-const FFMPEG_PATH = ffmpegInstaller.path;
-const FFPROBE_PATH = ffprobeInstaller.path;
-
-const exec = promisify(execCallback);
 
 const DIRECTUS_URL = process.env.VITE_DIRECTUS_URL;
 const DIRECTUS_TOKEN = process.env.DIRECTUS_STATIC_TOKEN;
@@ -47,14 +37,14 @@ const MANIFEST_FILE = path.join(
   "lib",
   "optimized-assets.json",
 );
-const VIDEO_MAX_WIDTH = 1920;
-const VIDEO_CRF = 28; // Constant Rate Factor (lower = better quality, 18-28 is good)
-// Stop starting new downloads/encodes after this many minutes so a cold cache
-// (first build, or Netlify cache eviction) doesn't hit Netlify's build timeout
-// (15 min by default). The budget must leave room for the overshoot of the
-// last video started (its download+encode runs to completion), npm install,
-// and the framework build — hence the small default. Videos left unprocessed
-// fall back to Directus until a follow-up build picks them up.
+// Videos are encoded at upload time by the Directus video-transcode extension
+// (directus-extension-video-transcode/); this script only downloads the
+// already-optimized files so Netlify's CDN can serve them.
+//
+// Stop starting new downloads after this many minutes so a cold cache (first
+// build, or Netlify cache eviction) doesn't hit Netlify's build timeout
+// (15 min by default). Videos left unprocessed fall back to Directus until a
+// follow-up build picks them up.
 const TIME_BUDGET_MIN = Number(process.env.ASSET_TIME_BUDGET_MIN ?? 5);
 
 interface AssetCache {
@@ -118,39 +108,6 @@ async function downloadFile(url: string, outputPath: string): Promise<void> {
   fs.writeFileSync(outputPath, buffer);
 }
 
-async function optimizeVideo(
-  inputPath: string,
-  outputPath: string,
-): Promise<number> {
-  // Get video dimensions using installed ffprobe
-  const probeCmd = `"${FFPROBE_PATH}" -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
-  const { stdout } = await exec(probeCmd);
-  const [width, height] = stdout.trim().split("x").map(Number);
-
-  // Calculate new dimensions maintaining aspect ratio
-  let newWidth = width;
-  let newHeight = height;
-  if (width > VIDEO_MAX_WIDTH) {
-    newWidth = VIDEO_MAX_WIDTH;
-    newHeight = Math.round((height * VIDEO_MAX_WIDTH) / width);
-    // Ensure even numbers for video encoding
-    newHeight = newHeight % 2 === 0 ? newHeight : newHeight + 1;
-  }
-
-  // Optimize video with installed ffmpeg
-  const ffmpegCmd = `"${FFMPEG_PATH}" -i "${inputPath}" -vf "scale=${newWidth}:${newHeight}" -c:v libx264 -crf ${VIDEO_CRF} -preset medium -c:a aac -b:a 128k -movflags +faststart -y "${outputPath}"`;
-
-  try {
-    await exec(ffmpegCmd, { maxBuffer: 1024 * 1024 * 64 });
-    const stats = fs.statSync(outputPath);
-    return stats.size;
-  } catch (error) {
-    console.warn(`⚠️  Failed to optimize video, using original: ${error}`);
-    fs.copyFileSync(inputPath, outputPath);
-    return fs.statSync(outputPath).size;
-  }
-}
-
 async function processVideo(
   asset: AssetInfo,
   cache: AssetCache,
@@ -165,20 +122,19 @@ async function processVideo(
     return { saved: false, size: cache[asset.id].processedSize };
   }
 
+  if (!asset.transcoded) {
+    // Every upload should have been encoded at the source; an unmarked file
+    // means the Directus extension is off or broken. Serve it anyway (raw
+    // from the CDN still beats raw from the homeserver), but say so loudly.
+    console.warn(
+      `   ⚠️ ${asset.filename} is NOT transcoded at the source — check the video-transcode extension on the Directus server`,
+    );
+  }
+
   await downloadFile(asset.url, tempPath);
   const fileHash = getFileHash(tempPath);
-
-  let processedSize: number;
-  if (asset.transcoded) {
-    // Already optimized at the source — re-encoding would only waste build
-    // time and add generational quality loss
-    fs.renameSync(tempPath, finalPath);
-    processedSize = fs.statSync(finalPath).size;
-  } else {
-    processedSize = await optimizeVideo(tempPath, finalPath);
-    // Clean up temp file
-    fs.unlinkSync(tempPath);
-  }
+  fs.renameSync(tempPath, finalPath);
+  const processedSize = fs.statSync(finalPath).size;
 
   // Update cache
   cache[asset.id] = {
@@ -256,12 +212,11 @@ async function main() {
   }
 
   // Process assets
-  console.log("\n⚙️ Processing videos...\n");
+  console.log("\n⚙️ Downloading videos...\n");
 
   let processedCount = 0;
   let skippedCount = 0;
   let outOfBudgetCount = 0;
-  let totalOriginalSize = 0;
   let totalProcessedSize = 0;
 
   for (const asset of assets) {
@@ -280,16 +235,12 @@ async function main() {
     try {
       const result = await processVideo(asset, cache);
 
-      totalOriginalSize += asset.filesize;
       totalProcessedSize += result.size;
 
       if (result.saved) {
         processedCount++;
-        const savedPercent = Math.round(
-          ((asset.filesize - result.size) / asset.filesize) * 100,
-        );
         console.log(
-          `   🎬 ${asset.filename} - ${formatBytes(asset.filesize)} → ${formatBytes(result.size)} (${savedPercent}% saved)`,
+          `   🎬 ${asset.filename} - ${formatBytes(result.size)} downloaded`,
         );
       } else {
         skippedCount++;
@@ -344,26 +295,16 @@ async function main() {
   saveManifest(optimizedIds);
 
   // Summary
-  const totalSaved = totalOriginalSize - totalProcessedSize;
-  const savedPercent =
-    totalOriginalSize > 0
-      ? Math.round((totalSaved / totalOriginalSize) * 100)
-      : 0;
-
   console.log("\n═══════════════════════════════════════════");
   console.log("              SUMMARY");
   console.log("═══════════════════════════════════════════\n");
-  console.log(`📊 Videos processed:  ${processedCount}`);
+  console.log(`📊 Videos downloaded: ${processedCount}`);
   console.log(`⏭️  Videos cached:     ${skippedCount}`);
   console.log(`⏳ Deferred (budget): ${outOfBudgetCount}`);
   console.log(`🗑️  Files removed:     ${removedCount}`);
   console.log(`📜 Manifest entries:  ${optimizedIds.length}`);
-  console.log(`\n💾 Original size:     ${formatBytes(totalOriginalSize)}`);
-  console.log(`📦 Optimized size:    ${formatBytes(totalProcessedSize)}`);
-  console.log(
-    `✨ Space saved:       ${formatBytes(totalSaved)} (${savedPercent}%)`,
-  );
-  console.log("\n✅ Asset optimization complete!\n");
+  console.log(`📦 Total size:        ${formatBytes(totalProcessedSize)}`);
+  console.log("\n✅ Asset download complete!\n");
 
   // When videos were deferred, leave a marker for the trigger-followup build
   // plugin, which chains another build — but only from onSuccess, i.e. after
