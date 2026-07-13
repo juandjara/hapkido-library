@@ -115,10 +115,16 @@ async function processVideo(
   const finalPath = path.join(PUBLIC_ASSETS_DIR, `${asset.id}.mp4`);
   const tempPath = path.join(PUBLIC_ASSETS_DIR, `temp_${asset.id}.mp4`);
 
-  // Cheap cache check first: Directus file ids are immutable (replacing a
-  // video creates a new file id), so an existing cache entry + output file
-  // means we can skip the download entirely
-  if (cache[asset.id] && fs.existsSync(finalPath)) {
+  // Cache check: a file id's content CAN change in place (the Directus
+  // transcode extension replaces uploads under the same id, as did the
+  // backfill), so trust the cache only while the source filesize still
+  // matches what we downloaded — otherwise re-download. This also self-heals
+  // the race where a build downloads an upload before its transcode finished.
+  if (
+    cache[asset.id] &&
+    cache[asset.id].originalSize === asset.filesize &&
+    fs.existsSync(finalPath)
+  ) {
     return { saved: false, size: cache[asset.id].processedSize };
   }
 
@@ -223,6 +229,7 @@ async function main() {
     const elapsedMin = (Date.now() - startedAt) / 60000;
     const isCached =
       cache[asset.id] &&
+      cache[asset.id].originalSize === asset.filesize &&
       fs.existsSync(path.join(PUBLIC_ASSETS_DIR, `${asset.id}.mp4`));
     if (!isCached && elapsedMin > TIME_BUDGET_MIN) {
       outOfBudgetCount++;
