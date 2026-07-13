@@ -12,6 +12,11 @@
  * Requires ffmpeg + ffprobe on the host (override paths via env below).
  *
  * Env (all optional):
+ *   TRANSCODE_USER_EMAILS          comma-separated Directus user emails; when
+ *                                  set, only uploads made by these accounts
+ *                                  are transcoded (guard for shared instances
+ *                                  hosting other projects' videos). Unset =
+ *                                  transcode every video upload.
  *   TRANSCODE_ENABLED=false        kill switch
  *   TRANSCODE_FFMPEG_PATH          default "ffmpeg"
  *   TRANSCODE_FFPROBE_PATH         default "ffprobe"
@@ -39,7 +44,7 @@ const { pipeline } = require("node:stream/promises");
 
 const execAsync = promisify(exec);
 
-module.exports = ({ action }, { services, logger, env, getSchema }) => {
+module.exports = ({ action }, { services, logger, env, getSchema, database }) => {
   const { AssetsService, FilesService } = services;
 
   const FFMPEG = env["TRANSCODE_FFMPEG_PATH"] || "ffmpeg";
@@ -48,14 +53,63 @@ module.exports = ({ action }, { services, logger, env, getSchema }) => {
   const CRF = Number(env["TRANSCODE_CRF"] || 28);
   const PRESET = env["TRANSCODE_PRESET"] || "medium";
   const SKIP_BITRATE = Number(env["TRANSCODE_SKIP_BITRATE"] || 4_000_000);
+  // Directus auto-casts env values: comma-separated strings arrive as arrays,
+  // "true"/"false" as booleans — never assume a string
+  const rawEmails = env["TRANSCODE_USER_EMAILS"];
+  const ALLOWED_EMAILS = (
+    Array.isArray(rawEmails) ? rawEmails : String(rawEmails ?? "").split(",")
+  )
+    .map((email) => String(email).trim().toLowerCase())
+    .filter(Boolean);
+  const DISABLED =
+    env["TRANSCODE_ENABLED"] === false || env["TRANSCODE_ENABLED"] === "false";
+
+  // Resolved lazily on first upload, then kept; not cached while empty so a
+  // typo'd email can be fixed without restarting Directus
+  let allowedUserIds = null;
+
+  async function isAllowedUploader(accountability) {
+    if (ALLOWED_EMAILS.length === 0) return true; // guard not configured
+    if (!accountability?.user) return false; // system/anonymous upload
+
+    if (allowedUserIds === null || allowedUserIds.size === 0) {
+      const users = await database("directus_users")
+        .select("id", "email")
+        .whereNotNull("email");
+      allowedUserIds = new Set(
+        users
+          .filter((u) => ALLOWED_EMAILS.includes(u.email.toLowerCase()))
+          .map((u) => u.id),
+      );
+      if (allowedUserIds.size === 0) {
+        logger.warn(
+          `video-transcode: TRANSCODE_USER_EMAILS matched no Directus users - all uploads will be skipped`,
+        );
+      }
+    }
+
+    return allowedUserIds.has(accountability.user);
+  }
 
   // Serialize jobs: one ffmpeg at a time, uploads queue up behind it
   let queue = Promise.resolve();
 
-  action("files.upload", ({ payload, key }) => {
-    if (env["TRANSCODE_ENABLED"] === "false") return;
+  action("files.upload", async ({ payload, key }, { accountability }) => {
+    if (DISABLED) return;
     if (!payload?.type?.startsWith("video/")) return;
     if (payload?.metadata?.transcoded) return; // our own replacement upload
+
+    try {
+      if (!(await isAllowedUploader(accountability))) {
+        logger.info(
+          `video-transcode: skipping ${key} (uploader not in TRANSCODE_USER_EMAILS)`,
+        );
+        return;
+      }
+    } catch (error) {
+      logger.error(error, `video-transcode: uploader check failed for ${key}`);
+      return;
+    }
 
     logger.info(`video-transcode: queueing ${key} (${payload.filename_download ?? "unknown name"})`);
 
