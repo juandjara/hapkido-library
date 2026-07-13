@@ -271,6 +271,10 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
           storage: file.storage,
           filename_download: `${baseName}-poster.jpg`,
           type: "image/jpeg",
+          // Keep the poster next to its video (folder permissions apply to
+          // both); when the video has no folder, omitting lets Directus
+          // apply its storage_default_folder setting
+          ...(file.folder ? { folder: file.folder } : {}),
         },
         undefined,
         { emitEvents: false },
