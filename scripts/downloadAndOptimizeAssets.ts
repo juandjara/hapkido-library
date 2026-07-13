@@ -72,6 +72,11 @@ interface AssetInfo {
   filesize: number;
   filename: string;
   url: string;
+  // Set when the Directus video-transcode extension already processed this
+  // file at upload time (metadata.transcoded: true | "skipped" |
+  // "kept-original" — all mean the stored file is final): download-only,
+  // no local ffmpeg pass
+  transcoded: boolean;
 }
 
 function ensureDir(dir: string) {
@@ -163,10 +168,17 @@ async function processVideo(
   await downloadFile(asset.url, tempPath);
   const fileHash = getFileHash(tempPath);
 
-  const processedSize = await optimizeVideo(tempPath, finalPath);
-
-  // Clean up temp file
-  fs.unlinkSync(tempPath);
+  let processedSize: number;
+  if (asset.transcoded) {
+    // Already optimized at the source — re-encoding would only waste build
+    // time and add generational quality loss
+    fs.renameSync(tempPath, finalPath);
+    processedSize = fs.statSync(finalPath).size;
+  } else {
+    processedSize = await optimizeVideo(tempPath, finalPath);
+    // Clean up temp file
+    fs.unlinkSync(tempPath);
+  }
 
   // Update cache
   cache[asset.id] = {
@@ -220,7 +232,7 @@ async function main() {
         readFiles({
           limit: -1,
           filter: { id: { _in: Array.from(assetIds) } },
-          fields: ["id", "filesize", "type", "filename_download"],
+          fields: ["id", "filesize", "type", "filename_download", "metadata"],
         }),
       )
     : [];
@@ -233,6 +245,8 @@ async function main() {
       filesize: Number(file.filesize) || 0,
       filename: file.filename_download,
       url: `${DIRECTUS_URL}/assets/${file.id}`,
+      transcoded: !!(file.metadata as Record<string, unknown> | null)
+        ?.transcoded,
     }));
 
   const skippedNonVideo = files.length - assets.length;
