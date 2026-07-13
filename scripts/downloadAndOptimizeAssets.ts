@@ -50,9 +50,12 @@ const MANIFEST_FILE = path.join(
 const VIDEO_MAX_WIDTH = 1920;
 const VIDEO_CRF = 28; // Constant Rate Factor (lower = better quality, 18-28 is good)
 // Stop starting new downloads/encodes after this many minutes so a cold cache
-// (first build, or Netlify cache eviction) doesn't hit the build timeout.
-// Videos left unprocessed simply fall back to Directus until the next build.
-const TIME_BUDGET_MIN = Number(process.env.ASSET_TIME_BUDGET_MIN ?? 20);
+// (first build, or Netlify cache eviction) doesn't hit Netlify's build timeout
+// (15 min by default). The budget must leave room for the overshoot of the
+// last video started (its download+encode runs to completion), npm install,
+// and the framework build — hence the small default. Videos left unprocessed
+// fall back to Directus until a follow-up build picks them up.
+const TIME_BUDGET_MIN = Number(process.env.ASSET_TIME_BUDGET_MIN ?? 5);
 
 interface AssetCache {
   [assetId: string]: {
