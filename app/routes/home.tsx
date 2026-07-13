@@ -3,6 +3,7 @@ import {
   Search,
   Play,
   User,
+  Users,
   Calendar,
   ChevronDown,
   ChevronUp,
@@ -24,6 +25,7 @@ import {
   serverDirectus,
   logout,
   getDirectusClient,
+  getCurrentUser,
   isAuthenticated,
 } from "@/lib/directus";
 import { getVideoUrl, getPosterUrl, isOptimized } from "@/lib/assets";
@@ -44,6 +46,7 @@ export async function loader() {
           "uploaded_by",
           "video_file.id",
           "video_file.metadata",
+          "user_created",
           "date_created",
           "tags.hapkido_tags_id.name",
           "movements.hapkido_movements_id.name",
@@ -78,10 +81,13 @@ export async function loader() {
 export async function clientLoader({ serverLoader }: ClientLoaderFunctionArgs) {
   const authenticated = await isAuthenticated();
   if (!authenticated) {
-    return redirect("/access");
+    return redirect("/login");
   }
-  const serverData = await serverLoader<typeof loader>();
-  return serverData;
+  const [serverData, currentUser] = await Promise.all([
+    serverLoader<typeof loader>(),
+    getCurrentUser(),
+  ]);
+  return { ...serverData, currentUser };
 }
 
 clientLoader.hydrate = true;
@@ -98,7 +104,8 @@ const HapkidoLibrary = () => {
     videos: rawVideos,
     tags: allTags,
     directusUrl,
-  } = useLoaderData<typeof loader>();
+    currentUser,
+  } = useLoaderData<typeof clientLoader>();
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -113,7 +120,7 @@ const HapkidoLibrary = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/access");
+    navigate("/login");
   };
 
   const handlePlayVideo = (video: {
@@ -158,9 +165,13 @@ const HapkidoLibrary = () => {
     }
   };
 
-  // Transform Directus data to component format. video_file is a nested
-  // object; its metadata (written by the Directus transcode extension)
-  // carries the poster file id and duration so the grid needs no video fetch
+  // Directus policies are the real enforcement; hiding the buttons just
+  // keeps the UI honest about what each member can do
+  const canManageVideo = (videoUserCreated: string | null) =>
+    !!currentUser &&
+    (currentUser.isAdmin || videoUserCreated === currentUser.id);
+
+  // Transform Directus data to component format
   const videos = rawVideos.map((video) => ({
     id: video.id,
     title: video.title,
@@ -175,6 +186,7 @@ const HapkidoLibrary = () => {
         )
       : null,
     duration: video.video_file?.metadata?.duration ?? null,
+    userCreated: video.user_created,
     dateCreated: video.date_created,
     tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
     movements:
@@ -264,6 +276,15 @@ const HapkidoLibrary = () => {
               >
                 Subir Video
               </Link>
+              {currentUser?.isAdmin && (
+                <Link
+                  to="/admin"
+                  className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition"
+                  title="Miembros"
+                >
+                  <Users size={18} />
+                </Link>
+              )}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition"
@@ -390,24 +411,28 @@ const HapkidoLibrary = () => {
                     <h3 className="text-white font-semibold flex-1">
                       {video.title}
                     </h3>
-                    <div className="flex items-center gap-1 ml-2">
-                      <button
-                        onClick={() =>
-                          navigate("/upload", { state: { videoId: video.id } })
-                        }
-                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
-                        title="Editar video"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(video.id, video.title)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded transition"
-                        title="Eliminar video"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    {canManageVideo(video.userCreated) && (
+                      <div className="flex items-center gap-1 ml-2">
+                        <button
+                          onClick={() =>
+                            navigate("/upload", {
+                              state: { videoId: video.id },
+                            })
+                          }
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
+                          title="Editar video"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(video.id, video.title)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded transition"
+                          title="Eliminar video"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1 text-xs text-slate-400 mb-1">

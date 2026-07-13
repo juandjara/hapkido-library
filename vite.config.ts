@@ -6,7 +6,7 @@ import netlifyReactRouter from "@netlify/vite-plugin-react-router";
 
 // These are inlined into the bundles at build time, so a missing value
 // silently compiles to `undefined`. Fail the build instead.
-const REQUIRED_ENV_VARS = ["VITE_DIRECTUS_URL", "VITE_USER_EMAIL"];
+const REQUIRED_ENV_VARS = ["VITE_DIRECTUS_URL"];
 
 export default defineConfig(({ command, mode }) => {
   if (command === "build") {

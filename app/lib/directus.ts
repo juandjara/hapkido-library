@@ -10,9 +10,18 @@ import {
   readItems,
   readSingleton,
 } from "@directus/sdk";
-import { DIRECTUS_URL, USER_EMAIL, DIRECTUS_STATIC_TOKEN } from "./env";
+import { DIRECTUS_URL, DIRECTUS_STATIC_TOKEN } from "./env";
 
 const AUTH_KEY = "directus-data";
+
+// Role IDs as configured in Directus (stable across renames, unlike names)
+export const MEMBER_ROLE_ID = "363ec50b-708e-405d-9f5d-680bb2e6f7cc"; // Hapkido Member
+export const HAPKIDO_ADMIN_ROLE_ID = "c9774292-f1c0-4249-9ef3-e044c0c5d3a0";
+const DIRECTUS_ADMIN_ROLE_ID = "1c18c30f-71a5-432f-ac67-920e3eee2113";
+
+// Dojo roles: the only users the members page lists and manages
+export const HAPKIDO_ROLE_IDS = [MEMBER_ROLE_ID, HAPKIDO_ADMIN_ROLE_ID];
+export const ADMIN_ROLE_IDS = [HAPKIDO_ADMIN_ROLE_ID, DIRECTUS_ADMIN_ROLE_ID];
 
 class LocalStorage {
   get() {
@@ -47,13 +56,14 @@ const directus = createDirectus(DIRECTUS_URL)
 
 /**
  * Login with Directus user account
- * @param {string} password - The Hapkido account password
+ * @param {string} email - The member's email
+ * @param {string} password - The member's password
  * @returns {Promise<{success: boolean, message?: string}>}
  */
-export async function authenticateUser(password: string) {
+export async function authenticateUser(email: string, password: string) {
   try {
     await directus.login({
-      email: USER_EMAIL,
+      email,
       password,
     });
 
@@ -66,7 +76,7 @@ export async function authenticateUser(password: string) {
       if (error.errors?.[0]?.extensions?.code === "INVALID_CREDENTIALS") {
         return {
           success: false,
-          message: "Contraseña incorrecta",
+          message: "Email o contraseña incorrectos",
         };
       }
     }
@@ -96,12 +106,47 @@ export async function isAuthenticated() {
     if (!token) return false;
 
     // Verify token by fetching current user
-    await directus.request(readMe({ fields: ["name", "email"] }));
+    await directus.request(readMe({ fields: ["id"] }));
     return true;
   } catch (error) {
     // Token invalid or expired
     await logout();
     return false;
+  }
+}
+
+export interface CurrentUser {
+  id: string;
+  firstName: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+/**
+ * Fetch the logged-in user's identity and role
+ * @returns {Promise<CurrentUser | null>} null when not authenticated
+ */
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  try {
+    const me = (await directus.request(
+      readMe({ fields: ["id", "first_name", "email", "role"] }),
+    )) as {
+      id: string;
+      first_name: string | null;
+      email: string | null;
+      role: string | null;
+    };
+
+    return {
+      id: me.id,
+      firstName: me.first_name || me.email || "",
+      email: me.email || "",
+      // Directus Administrators count too, so the instance admin can use
+      // the app without a second account
+      isAdmin: !!me.role && ADMIN_ROLE_IDS.includes(me.role),
+    };
+  } catch (error) {
+    return null;
   }
 }
 

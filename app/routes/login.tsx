@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Form,
+  Link,
   redirect,
   useActionData,
   type ClientActionFunctionArgs,
@@ -10,13 +11,14 @@ import useRootData from "@/lib/useRootData";
 
 export async function clientAction({ request }: ClientActionFunctionArgs) {
   const formData = await request.formData();
+  const email = formData.get("email");
   const password = formData.get("password");
 
-  if (!password) {
-    return { error: "Por favor ingresa la contraseña" };
+  if (!email || !password) {
+    return { error: "Por favor ingresa tu email y contraseña" };
   }
 
-  const result = await authenticateUser(String(password));
+  const result = await authenticateUser(String(email), String(password));
 
   if (result.success) {
     // Token is automatically stored by Directus SDK in localStorage
@@ -28,7 +30,8 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   };
 }
 
-export default function Access() {
+export default function Login() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const actionData = useActionData();
   const { globals } = useRootData();
@@ -53,7 +56,7 @@ export default function Access() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
             {globals.app_title}
           </h1>
-          <p className="text-gray-600">Ingresa la contraseña para continuar</p>
+          <p className="text-gray-600">Ingresa tus datos para continuar</p>
         </div>
 
         <Form method="post" className="mt-8 space-y-6">
@@ -63,21 +66,39 @@ export default function Access() {
             </div>
           )}
 
-          <div>
-            <label htmlFor="password" className="sr-only">
-              Contraseña
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="appearance-none relative block w-full px-3 py-3 border border-gray-300 bg-white placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Contraseña"
-            />
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="email" className="sr-only">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-3 border border-gray-300 bg-white placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Email"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="sr-only">
+                Contraseña
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-3 border border-gray-300 bg-white placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Contraseña"
+              />
+            </div>
           </div>
 
           <button
@@ -86,6 +107,16 @@ export default function Access() {
           >
             Entrar
           </button>
+
+          <p className="text-center text-sm text-gray-600">
+            ¿Tienes un código de invitación?{" "}
+            <Link
+              to="/signup"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Crea tu cuenta
+            </Link>
+          </p>
         </Form>
       </div>
     </div>

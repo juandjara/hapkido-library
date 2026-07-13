@@ -7,7 +7,15 @@ export default [
     file: "routes/upload.tsx",
   },
   {
-    path: "/access",
-    file: "routes/access.tsx",
+    path: "/login",
+    file: "routes/login.tsx",
+  },
+  {
+    path: "/signup",
+    file: "routes/signup.tsx",
+  },
+  {
+    path: "/admin",
+    file: "routes/admin.tsx",
   },
 ] satisfies RouteConfig;

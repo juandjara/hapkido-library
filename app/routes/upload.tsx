@@ -16,6 +16,7 @@ import {
 import {
   serverDirectus,
   getDirectusClient,
+  getCurrentUser,
   checkServerStatus,
   isAuthenticated,
   uploadFileWithProgress,
@@ -50,10 +51,13 @@ export async function loader() {
 export async function clientLoader({ serverLoader }: ClientLoaderFunctionArgs) {
   const authenticated = await isAuthenticated();
   if (!authenticated) {
-    return redirect("/access");
+    return redirect("/login");
   }
-  const serverData = await serverLoader<typeof loader>();
-  return serverData;
+  const [serverData, currentUser] = await Promise.all([
+    serverLoader<typeof loader>(),
+    getCurrentUser(),
+  ]);
+  return { ...serverData, currentUser };
 }
 
 clientLoader.hydrate = true;
@@ -65,8 +69,11 @@ export function HydrateFallback() {
 export default function HapkidoUploadForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { tags: existingTags, movements: existingMovements } =
-    useLoaderData<typeof loader>();
+  const {
+    tags: existingTags,
+    movements: existingMovements,
+    currentUser,
+  } = useLoaderData<typeof clientLoader>();
 
   // Check if we're editing (videoId in location state)
   const videoId = location.state?.videoId;
@@ -202,8 +209,7 @@ export default function HapkidoUploadForm() {
     if (
       (!isEditMode && !videoFile) ||
       !formData.title ||
-      !formData.participants ||
-      !formData.uploadedBy
+      !formData.participants
     ) {
       return;
     }
@@ -264,10 +270,13 @@ export default function HapkidoUploadForm() {
       );
 
       // Step 4: Create or update video item with relations
+      // Attribution comes from the logged-in user; edits keep the original
       const videoData = {
         title: formData.title,
         participants: formData.participants,
-        uploaded_by: formData.uploadedBy,
+        uploaded_by: isEditMode
+          ? formData.uploadedBy
+          : (currentUser?.firstName ?? ""),
         video_file: videoFileId,
         tags: tagIds.map((id) => ({
           hapkido_tags_id: id,
@@ -318,7 +327,6 @@ export default function HapkidoUploadForm() {
     (isEditMode || videoFile) &&
     formData.title &&
     formData.participants &&
-    formData.uploadedBy &&
     !isSubmitting;
 
   return (
@@ -436,25 +444,6 @@ export default function HapkidoUploadForm() {
             <p className="text-slate-500 text-xs mt-1">
               Para mostrar quién sale en este video? (separa los nombres con
               comas)
-            </p>
-          </div>
-
-          {/* Uploaded By */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Tu Nombre <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.uploadedBy}
-              onChange={(e) =>
-                setFormData({ ...formData, uploadedBy: e.target.value })
-              }
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-red-500"
-              required
-            />
-            <p className="text-slate-500 text-xs mt-1">
-              Para mostrar quién subió este video
             </p>
           </div>
 
