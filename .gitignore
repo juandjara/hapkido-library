@@ -12,3 +12,4 @@
 # downloaded and optimized assets
 /public/assets/
 /app/lib/optimized-assets.json
+/.assets-deferred.json

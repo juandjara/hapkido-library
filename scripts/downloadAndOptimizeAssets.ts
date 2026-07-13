@@ -351,18 +351,17 @@ async function main() {
   );
   console.log("\n✅ Asset optimization complete!\n");
 
-  // On Netlify, chain another build when videos were deferred so successive
-  // builds keep filling the cache until the whole library is optimized.
-  // Terminates naturally: the deferred count shrinks every build.
-  const hookUrl = process.env.NETLIFY_BUILD_HOOK_URL;
-  if (outOfBudgetCount > 0 && hookUrl && process.env.NETLIFY === "true") {
-    console.log(
-      `🔁 ${outOfBudgetCount} videos pending — triggering follow-up build...\n`,
-    );
-    const response = await fetch(hookUrl, { method: "POST" });
-    if (!response.ok) {
-      console.warn(`⚠️  Build hook responded with ${response.status}`);
-    }
+  // When videos were deferred, leave a marker for the trigger-followup build
+  // plugin, which chains another build — but only from onSuccess, i.e. after
+  // this build deployed AND netlify-plugin-cache saved public/assets. Firing
+  // the hook from here (mid-build) would queue a follow-up even when the rest
+  // of the build fails, looping identical builds against an unsaved cache.
+  const markerFile = path.join(process.cwd(), ".assets-deferred.json");
+  if (outOfBudgetCount > 0) {
+    console.log(`🔁 ${outOfBudgetCount} videos pending for a follow-up build\n`);
+    fs.writeFileSync(markerFile, JSON.stringify({ deferred: outOfBudgetCount }));
+  } else {
+    fs.rmSync(markerFile, { force: true });
   }
 }
 

@@ -1,3 +1,8 @@
+# Explicit build command so a stale UI setting can never skip the
+# download-assets step
+[build]
+  command = "npm run build"
+
 # Persist downloaded/optimized videos (public/assets) between builds so
 # scripts/downloadAndOptimizeAssets.ts only processes new or changed videos
 # instead of re-downloading and re-encoding the whole library on every deploy.
@@ -6,3 +11,9 @@
 
   [plugins.inputs]
     paths = ["public/assets"]
+
+# Chains a follow-up build when the script deferred videos (time budget).
+# MUST be listed after netlify-plugin-cache: both act in onSuccess and plugins
+# run in listed order, so the cache is saved before the next build is queued.
+[[plugins]]
+  package = "./netlify/plugins/trigger-followup"
