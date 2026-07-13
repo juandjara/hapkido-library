@@ -30,3 +30,20 @@ export function getVideoUrl(fileId: string, directusUrl: string): string {
     ? `/assets/${fileId}.mp4`
     : `${directusUrl}/assets/${fileId}`;
 }
+
+/**
+ * Resolve the poster image for a video's grid card: the CDN copy downloaded
+ * at build time when available, a Directus image transform otherwise, null
+ * when the video has no poster (extension not run yet) — callers fall back
+ * to the emoji thumbnail.
+ */
+export function getPosterUrl(
+  fileId: string,
+  posterId: string | null | undefined,
+  directusUrl: string,
+): string | null {
+  if (!posterId) return null;
+  return isOptimized(fileId)
+    ? `/assets/${fileId}.webp`
+    : `${directusUrl}/assets/${posterId}?width=640&quality=75&format=webp`;
+}

@@ -28,11 +28,13 @@ fi
 echo "Authenticated as $(jq -r '.data.email' <<<"$me")"
 
 # Scope strictly to files referenced by hapkido_videos: the Directus instance
-# is shared with other projects whose videos must NOT be re-encoded
+# is shared with other projects whose videos must NOT be re-encoded.
+# A file needs backfilling when it was never transcoded OR predates poster
+# generation (already-transcoded files are re-fed poster-only, no re-encode).
 pending=$(
   curl -sfg -H "$AUTH" \
     "$DIRECTUS_URL/items/hapkido_videos?limit=-1&fields=video_file.id,video_file.metadata" |
-    jq -r '.data[].video_file | select(. != null) | select(.metadata.transcoded == null) | .id' |
+    jq -r '.data[].video_file | select(. != null) | select(.metadata.transcoded == null or .metadata.poster == null) | .id' |
     sort -u
 )
 
@@ -66,7 +68,7 @@ for id in $pending; do
   deadline=$(($(date +%s) + POLL_TIMEOUT_MIN * 60))
   while :; do
     state=$(curl -sfg -H "$AUTH" "$DIRECTUS_URL/files/$id?fields=metadata,filesize" | jq -c '.data')
-    marker=$(jq -r '.metadata.transcoded // empty' <<<"$state")
+    marker=$(jq -r 'select(.metadata.poster != null) | .metadata.transcoded // empty' <<<"$state")
     if [ -n "$marker" ]; then
       newsize=$(jq -r '.filesize' <<<"$state")
       echo "  done ($marker): $size -> $newsize bytes"

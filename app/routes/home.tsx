@@ -26,7 +26,7 @@ import {
   getDirectusClient,
   isAuthenticated,
 } from "@/lib/directus";
-import { getVideoUrl, isOptimized } from "@/lib/assets";
+import { getVideoUrl, getPosterUrl, isOptimized } from "@/lib/assets";
 import { DIRECTUS_URL } from "@/lib/env";
 import useRootData from "@/lib/useRootData";
 import Loading from "@/components/Loading";
@@ -42,7 +42,8 @@ export async function loader() {
           "title",
           "participants",
           "uploaded_by",
-          "video_file",
+          "video_file.id",
+          "video_file.metadata",
           "date_created",
           "tags.hapkido_tags_id.name",
           "movements.hapkido_movements_id.name",
@@ -104,9 +105,6 @@ const HapkidoLibrary = () => {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
     {},
   );
-  const [videoDurations, setVideoDurations] = useState<Record<string, number>>(
-    {},
-  );
   const [playingVideo, setPlayingVideo] = useState<{
     id: string;
     title: string;
@@ -160,13 +158,23 @@ const HapkidoLibrary = () => {
     }
   };
 
-  // Transform Directus data to component format
+  // Transform Directus data to component format. video_file is a nested
+  // object; its metadata (written by the Directus transcode extension)
+  // carries the poster file id and duration so the grid needs no video fetch
   const videos = rawVideos.map((video) => ({
     id: video.id,
     title: video.title,
     participants: video.participants,
     uploadedBy: video.uploaded_by,
-    videoFile: video.video_file,
+    videoFile: video.video_file?.id ?? null,
+    posterUrl: video.video_file?.id
+      ? getPosterUrl(
+          video.video_file.id,
+          video.video_file.metadata?.poster,
+          directusUrl,
+        )
+      : null,
+    duration: video.video_file?.metadata?.duration ?? null,
     dateCreated: video.date_created,
     tags: video.tags?.map((t) => t.hapkido_tags_id?.name).filter(Boolean) || [],
     movements:
@@ -339,20 +347,12 @@ const HapkidoLibrary = () => {
                     })
                   }
                 >
-                  {video.videoFile ? (
-                    <video
-                      src={getVideoUrl(video.videoFile, directusUrl)}
+                  {video.videoFile && video.posterUrl ? (
+                    <img
+                      src={video.posterUrl}
+                      alt=""
+                      loading="lazy"
                       className="w-full h-full object-cover"
-                      preload="metadata"
-                      onLoadedMetadata={(e) => {
-                        const duration = e.currentTarget.duration;
-                        if (Number.isFinite(duration)) {
-                          setVideoDurations((prev) => ({
-                            ...prev,
-                            [video.id]: duration,
-                          }));
-                        }
-                      }}
                       onError={(e) => {
                         // Fallback to emoji on error
                         e.currentTarget.style.display = "none";
@@ -369,9 +369,9 @@ const HapkidoLibrary = () => {
                       size={48}
                     />
                   </div>
-                  {videoDurations[video.id] !== undefined && (
+                  {video.duration != null && (
                     <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs font-medium rounded">
-                      {formatDuration(videoDurations[video.id])}
+                      {formatDuration(video.duration)}
                     </span>
                   )}
                   {video.videoFile && !isOptimized(video.videoFile) && (

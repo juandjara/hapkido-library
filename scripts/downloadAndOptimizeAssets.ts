@@ -67,6 +67,9 @@ interface AssetInfo {
   // "kept-original" — all mean the stored file is final): download-only,
   // no local ffmpeg pass
   transcoded: boolean;
+  // Directus file id of the poster frame the extension extracted (if any);
+  // downloaded next to the video as {videoId}.webp for the library grid
+  posterId: string | null;
 }
 
 function ensureDir(dir: string) {
@@ -114,17 +117,34 @@ async function processVideo(
 ): Promise<{ saved: boolean; size: number }> {
   const finalPath = path.join(PUBLIC_ASSETS_DIR, `${asset.id}.mp4`);
   const tempPath = path.join(PUBLIC_ASSETS_DIR, `temp_${asset.id}.mp4`);
+  const posterPath = path.join(PUBLIC_ASSETS_DIR, `${asset.id}.webp`);
 
   // Cache check: a file id's content CAN change in place (the Directus
   // transcode extension replaces uploads under the same id, as did the
   // backfill), so trust the cache only while the source filesize still
   // matches what we downloaded — otherwise re-download. This also self-heals
   // the race where a build downloads an upload before its transcode finished.
-  if (
+  const cacheValid =
     cache[asset.id] &&
     cache[asset.id].originalSize === asset.filesize &&
-    fs.existsSync(finalPath)
-  ) {
+    fs.existsSync(finalPath);
+
+  // Posters are tiny: ensured on every run so videos cached before their
+  // poster existed pick it up, and refreshed whenever the video changed
+  if (asset.posterId && (!cacheValid || !fs.existsSync(posterPath))) {
+    try {
+      await downloadFile(
+        `${DIRECTUS_URL}/assets/${asset.posterId}?width=640&quality=75&format=webp`,
+        posterPath,
+      );
+    } catch (error) {
+      console.warn(
+        `   ⚠️ Failed to download poster for ${asset.filename}: ${error}`,
+      );
+    }
+  }
+
+  if (cacheValid) {
     return { saved: false, size: cache[asset.id].processedSize };
   }
 
@@ -209,6 +229,10 @@ async function main() {
       url: `${DIRECTUS_URL}/assets/${file.id}`,
       transcoded: !!(file.metadata as Record<string, unknown> | null)
         ?.transcoded,
+      posterId:
+        ((file.metadata as Record<string, unknown> | null)?.poster as
+          | string
+          | undefined) ?? null,
     }));
 
   const skippedNonVideo = files.length - assets.length;

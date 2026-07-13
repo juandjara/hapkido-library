@@ -7,6 +7,12 @@
  * UNDER THE SAME FILE ID via FilesService.uploadOne(..., primaryKey). Items
  * pointing at the file keep working; they just start serving the small copy.
  *
+ * It also extracts a poster frame (uploaded as a separate image file) and the
+ * duration, recorded in the video file's metadata as `poster` (file id) and
+ * `duration` (seconds) — the app uses these to render the library grid
+ * without fetching any video data. Re-feeding an already-transcoded file
+ * (backfill) skips the encode but still fills in missing poster/duration.
+ *
  * Deploy: place this folder inside the Directus instance's extensions
  * directory (EXTENSIONS_PATH, default ./extensions) and restart Directus.
  * Requires ffmpeg + ffprobe on the host (override paths via env below).
@@ -131,27 +137,42 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
     const { stream, file } = await assets.getAsset(key);
     const tmpIn = path.join(os.tmpdir(), `transcode_in_${key}`);
     const tmpOut = path.join(os.tmpdir(), `transcode_out_${key}.mp4`);
+    const tmpPoster = path.join(os.tmpdir(), `poster_${key}.jpg`);
 
     try {
       await pipeline(stream, fs.createWriteStream(tmpIn));
 
       const probe = await probeVideo(tmpIn);
 
-      if (
+      // A file is already final when it's h264 within size limits AND either
+      // carries our marker (re-fed by backfill, e.g. to generate a missing
+      // poster) or was uploaded small — re-encoding it would only lose quality
+      const alreadyFinal =
         probe &&
         probe.codec === "h264" &&
         probe.width <= MAX_WIDTH &&
-        probe.bitRate > 0 &&
-        probe.bitRate <= SKIP_BITRATE
-      ) {
+        (file.metadata?.transcoded ||
+          (probe.bitRate > 0 && probe.bitRate <= SKIP_BITRATE));
+
+      if (alreadyFinal) {
         logger.info(
-          `video-transcode: ${file.filename_download} already within limits (${probe.width}px, ${Math.round(probe.bitRate / 1000)} kbps) - skipping`,
+          `video-transcode: ${file.filename_download} already within limits (${probe.width}px, ${Math.round(probe.bitRate / 1000)} kbps) - skipping encode`,
         );
-        // Mark it so future inspection can tell it was evaluated; updateOne
-        // fires files.update, not files.upload, so this cannot loop
-        await files.updateOne(key, {
-          metadata: { ...(file.metadata ?? {}), transcoded: "skipped" },
-        });
+        const metadata = {
+          ...(file.metadata ?? {}),
+          transcoded: file.metadata?.transcoded ?? "skipped",
+        };
+        if (probe.duration && !metadata.duration) {
+          metadata.duration = probe.duration;
+        }
+        if (!metadata.poster) {
+          const posterId = await generatePoster(files, file, tmpIn, tmpPoster);
+          if (posterId) metadata.poster = posterId;
+        }
+        // Only write (files.update event) when something actually changed
+        if (JSON.stringify(metadata) !== JSON.stringify(file.metadata ?? {})) {
+          await files.updateOne(key, { metadata });
+        }
         return;
       }
 
@@ -174,11 +195,20 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
         logger.info(
           `video-transcode: ${file.filename_download} did not shrink (${originalSize} -> ${newSize} bytes) - keeping original`,
         );
+        const posterId = await generatePoster(files, file, tmpIn, tmpPoster);
         await files.updateOne(key, {
-          metadata: { ...(file.metadata ?? {}), transcoded: "kept-original" },
+          metadata: {
+            ...(file.metadata ?? {}),
+            transcoded: "kept-original",
+            ...(probe?.duration ? { duration: probe.duration } : {}),
+            ...(posterId ? { poster: posterId } : {}),
+          },
         });
         return;
       }
+
+      // Poster comes from the final encoded file so it matches what plays
+      const posterId = await generatePoster(files, file, tmpOut, tmpPoster);
 
       // Replace the stored file under the same id; emitEvents:false keeps
       // this from re-firing the files.upload hook
@@ -188,7 +218,12 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
           storage: file.storage,
           filename_download: withMp4Extension(file.filename_download),
           type: "video/mp4",
-          metadata: { ...(file.metadata ?? {}), transcoded: true },
+          metadata: {
+            ...(file.metadata ?? {}),
+            transcoded: true,
+            ...(probe?.duration ? { duration: probe.duration } : {}),
+            ...(posterId ? { poster: posterId } : {}),
+          },
         },
         key,
         { emitEvents: false },
@@ -202,6 +237,50 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
     } finally {
       fs.rmSync(tmpIn, { force: true });
       fs.rmSync(tmpOut, { force: true });
+      fs.rmSync(tmpPoster, { force: true });
+    }
+  }
+
+  /**
+   * Extract a frame from the video, upload it as a new Directus file and
+   * return its id (null on failure — a missing poster never blocks the video).
+   */
+  async function generatePoster(files, file, sourcePath, posterPath) {
+    try {
+      // -ss 1 for a representative frame; retry at 0 for sub-second clips
+      for (const seek of [1, 0]) {
+        await execAsync(
+          `"${FFMPEG}" -ss ${seek} -i "${sourcePath}" -frames:v 1 -q:v 3 -y "${posterPath}"`,
+          { maxBuffer: 1024 * 1024 * 64 },
+        ).catch(() => {});
+        if (fs.existsSync(posterPath) && fs.statSync(posterPath).size > 0) {
+          break;
+        }
+      }
+      if (!fs.existsSync(posterPath) || fs.statSync(posterPath).size === 0) {
+        logger.warn(
+          `video-transcode: could not extract poster for ${file.filename_download}`,
+        );
+        return null;
+      }
+
+      const baseName = path.parse(file.filename_download || "video").name;
+      const posterId = await files.uploadOne(
+        fs.createReadStream(posterPath),
+        {
+          storage: file.storage,
+          filename_download: `${baseName}-poster.jpg`,
+          type: "image/jpeg",
+        },
+        undefined,
+        { emitEvents: false },
+      );
+      return posterId;
+    } catch (error) {
+      logger.warn(
+        `video-transcode: poster generation failed for ${file.filename_download} (${error})`,
+      );
+      return null;
     }
   }
 
@@ -231,6 +310,9 @@ module.exports = ({ action }, { services, logger, env, getSchema, database }) =>
         height: swapped ? videoStream.width : videoStream.height,
         codec: videoStream.codec_name,
         bitRate: Number(parsed.format?.bit_rate ?? 0),
+        // Stored in file metadata so the app can show durations without
+        // fetching video metadata client-side
+        duration: Math.round(Number(parsed.format?.duration ?? 0) * 10) / 10,
       };
     } catch (error) {
       logger.warn(`video-transcode: ffprobe failed (${error}) - transcoding anyway`);
