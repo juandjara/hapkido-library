@@ -281,7 +281,11 @@ export default function HapkidoUploadForm() {
         await directus.request(
           updateItem("hapkido_videos", videoId, videoData),
         );
-        alert("¡Video actualizado exitosamente!");
+        alert(
+          videoFile
+            ? "¡Video actualizado exitosamente! El nuevo archivo se optimizará y publicará en unos minutos."
+            : "¡Video actualizado exitosamente!",
+        );
       } else {
         await directus.request(
           createItem("hapkido_videos", {
@@ -289,9 +293,13 @@ export default function HapkidoUploadForm() {
             status: "draft", // Default to draft for new videos
           }),
         );
-        alert("¡Video subido exitosamente!");
+        alert(
+          "¡Video subido exitosamente! Se optimizará y publicará en unos minutos.",
+        );
       }
 
+      // The Directus → Netlify flow triggers the rebuild that optimizes and
+      // publishes the new file on the CDN; nothing to do here
       navigate("/");
     } catch (error) {
       console.error(isEditMode ? "Update error:" : "Upload error:", error);

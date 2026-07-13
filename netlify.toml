@@ -1,0 +1,8 @@
+# Persist downloaded/optimized videos (public/assets) between builds so
+# scripts/downloadAndOptimizeAssets.ts only processes new or changed videos
+# instead of re-downloading and re-encoding the whole library on every deploy.
+[[plugins]]
+  package = "netlify-plugin-cache"
+
+  [plugins.inputs]
+    paths = ["public/assets"]

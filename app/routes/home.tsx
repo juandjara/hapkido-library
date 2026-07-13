@@ -26,6 +26,7 @@ import {
   getDirectusClient,
   isAuthenticated,
 } from "@/lib/directus";
+import { getVideoUrl, isOptimized } from "@/lib/assets";
 import { DIRECTUS_URL } from "@/lib/env";
 import useRootData from "@/lib/useRootData";
 import Loading from "@/components/Loading";
@@ -340,7 +341,7 @@ const HapkidoLibrary = () => {
                 >
                   {video.videoFile ? (
                     <video
-                      src={`${directusUrl}/assets/${video.videoFile}`}
+                      src={getVideoUrl(video.videoFile, directusUrl)}
                       className="w-full h-full object-cover"
                       preload="metadata"
                       onLoadedMetadata={(e) => {
@@ -371,6 +372,14 @@ const HapkidoLibrary = () => {
                   {videoDurations[video.id] !== undefined && (
                     <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs font-medium rounded">
                       {formatDuration(videoDurations[video.id])}
+                    </span>
+                  )}
+                  {video.videoFile && !isOptimized(video.videoFile) && (
+                    <span
+                      className="absolute top-2 left-2 px-1.5 py-0.5 bg-amber-500/90 text-black text-xs font-medium rounded"
+                      title="Este video aún no está optimizado; se reproduce directamente desde el servidor hasta la próxima publicación del sitio"
+                    >
+                      Optimizando…
                     </span>
                   )}
                 </div>
@@ -529,7 +538,7 @@ const HapkidoLibrary = () => {
                 {playingVideo.title}
               </h2>
               <video
-                src={`${directusUrl}/assets/${playingVideo.videoFile}`}
+                src={getVideoUrl(playingVideo.videoFile, directusUrl)}
                 className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
                 controls
                 autoPlay
