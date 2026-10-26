@@ -63,9 +63,13 @@ export async function loader() {
       }),
     );
 
+    const usedTags = new Set(
+      videos.flatMap((v) => v.tags?.map((t) => t.hapkido_tags_id?.name)),
+    );
+
     return {
       videos,
-      tags,
+      tags: tags.filter((t) => usedTags.has(t.name)),
       directusUrl: DIRECTUS_URL,
     };
   } catch (error) {
@@ -257,19 +261,18 @@ const HapkidoLibrary = () => {
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
-      <header className="bg-slate-900 border-b border-red-900/30 shadow-lg">
-        <div className="max-w-7xl mx-auto px-2 py-6">
-          <div className="flex flex-wrap gap-3 items-center justify-between">
+      <header className="bg-slate-900 border-b border-red-900 shadow-lg">
+        <div className="max-w-7xl mx-auto px-3 pt-8">
+          <div className="flex flex-col gap-3 items-center justify-center">
             <div>
-              <h1 className="text-3xl font-bold text-red-500">
+              <h1 className="text-center text-3xl font-bold text-red-500">
                 {globals.app_title}
               </h1>
-              <p className="text-slate-400 mt-1">{globals.app_subtitle}</p>
+              <p className="text-center text-slate-400 mt-0.5">
+                {globals.app_subtitle}
+              </p>
             </div>
-            <div className="flex self-end md:self-center ml-auto items-center gap-4">
-              <span className="text-slate-300 text-sm">
-                {filteredVideos.length} videos
-              </span>
+            <div className="flex py-3 items-center gap-4">
               <Link
                 to="/upload"
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
@@ -316,13 +319,13 @@ const HapkidoLibrary = () => {
         </div>
 
         {/* Filters */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-2">
+        <div className="mb-6">
+          <div className="flex gap-3 max-w-full overflow-auto">
             {allTags.map((tag) => (
               <button
                 key={tag.id}
                 onClick={() => toggleTag(tag.name)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                className={`shrink-0 px-4 py-3 rounded-full text-sm font-medium transition ${
                   selectedTags.includes(tag.name)
                     ? "bg-red-600 text-white ring-2 ring-red-400"
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
@@ -346,6 +349,9 @@ const HapkidoLibrary = () => {
             </button>
           )}
         </div>
+        <p className="text-slate-300 text-lg p-2">
+          {filteredVideos.length} videos
+        </p>
 
         {/* Video Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
